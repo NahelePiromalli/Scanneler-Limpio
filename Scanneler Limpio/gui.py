@@ -39,22 +39,31 @@ class CyberRain(ctk.CTkCanvas):
         super().__init__(master, bg=COLOR_BG, highlightthickness=0, **kwargs)
         self.color = color_accent
         self.drops = []
+        self.scanline_y = 0
         self.width = self.winfo_screenwidth()
         self.height = self.winfo_screenheight()
         self.is_running = True
         self.after_id = None
+        
+        self.crear_grid()
         self.crear_gotas()
         self.animar()
         
+    def crear_grid(self):
+        for x in range(0, self.width, 100):
+            self.create_line(x, 0, x, self.height, fill="#0a0014", width=1)
+        for y in range(0, self.height, 100):
+            self.create_line(0, y, self.width, y, fill="#0a0014", width=1)
+
     def crear_gotas(self):
         try:
-            for _ in range(60): 
+            for _ in range(50): 
                 x = random.randint(0, self.width)
                 y = random.randint(-500, self.height)
-                speed = random.randint(3, 7)
-                char = random.choice(["0", "1", "x", "FF", "A4", "Ω"])
-                rain_color = random.choice([self.color, "#333333"])
-                tag = self.create_text(x, y, text=char, fill=rain_color, font=("Consolas", 10), tag="rain")
+                speed = random.randint(3, 8)
+                char = random.choice(["0", "1", "x", "FF", "A4", "Ω", "⚡"])
+                c = self.color if random.random() > 0.7 else "#2a003b"
+                tag = self.create_text(x, y, text=char, fill=c, font=("Consolas", 10), tag="rain")
                 self.drops.append([tag, speed, y])
         except: pass
         
@@ -74,6 +83,13 @@ class CyberRain(ctk.CTkCanvas):
                 else: 
                     self.move(tag, 0, speed)
                 self.drops[i][2] = y
+            
+            self.delete("scanline")
+            self.scanline_y += 4
+            if self.scanline_y > self.height: self.scanline_y = -100
+            self.create_line(0, self.scanline_y, self.width, self.scanline_y, 
+                             fill=self.color, width=2, tag="scanline", stipple="gray25")
+            
             self.after_id = self.after(30, self.animar)
         except: self.is_running = False
         
@@ -87,6 +103,35 @@ class CyberRain(ctk.CTkCanvas):
 class ModernCard(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, corner_radius=15, fg_color=COLOR_PANEL, border_width=1, border_color=COLOR_BORDER, **kwargs)
+        self.scanner_bar = ctk.CTkFrame(self, height=2, fg_color=COLOR_ACCENT, corner_radius=0)
+        self.scanner_bar.place(relx=0, rely=0, relwidth=1)
+        self.scan_pos = 0.0
+        self.border_colors = [COLOR_BORDER, "#6A0090", "#8A00B0", COLOR_ACCENT]
+        self.color_idx = 0
+        self.direction = 1
+        self.animate_card()
+
+    def animate_card(self):
+        try:
+            if not self.winfo_exists(): return
+            self.scan_pos += 0.01
+            if self.scan_pos > 1.3: self.scan_pos = -0.3
+            
+            if 0 <= self.scan_pos <= 1:
+                self.scanner_bar.place(rely=self.scan_pos)
+                self.scanner_bar.lift()
+                self.scanner_bar.lower()
+            else:
+                self.scanner_bar.place_forget()
+
+            if int(self.scan_pos * 100) % 5 == 0:
+                self.configure(border_color=self.border_colors[self.color_idx])
+                self.color_idx += self.direction
+                if self.color_idx >= len(self.border_colors) - 1: self.direction = -1
+                elif self.color_idx <= 0: self.direction = 1
+
+            self.after(20, self.animate_card)
+        except: pass
 
 # =============================================================================
 # 2. VENTANAS SECUNDARIAS
@@ -107,21 +152,25 @@ class VentanaRegistro(ctk.CTkToplevel):
         y = (self.winfo_screenheight() - 600) // 2
         self.geometry(f"+{x}+{y}")
 
-        ctk.CTkLabel(self, text="[ NEW USER REGISTRATION ]", font=("Segoe UI", 18, "bold"), text_color=COLOR_SUCCESS).pack(pady=(40, 20))
+        self.anim = CyberRain(self, COLOR_ACCENT)
+        self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # CORREGIDO: Eliminado self.anim.lower()
+
+        ctk.CTkLabel(self, text="[ NEW AGENT REGISTRATION ]", font=("Segoe UI", 18, "bold"), text_color=COLOR_SUCCESS).pack(pady=(40, 20))
         
         f = ModernCard(self)
         f.pack(fill="x", padx=30, pady=10)
         
-        self.entry_key = ctk.CTkEntry(f, placeholder_text="LICENSE KEY (XXXX-XXXX)", justify="center", height=50, border_color="#444", fg_color="#0a0010")
+        self.entry_key = ctk.CTkEntry(f, placeholder_text="LICENSE KEY (XXXX-XXXX)", justify="center", height=50, border_color="#444", fg_color="#080010")
         self.entry_key.pack(fill="x", pady=(20, 10), padx=20)
         
-        self.entry_u = ctk.CTkEntry(f, placeholder_text="DESIRED USERNAME", justify="center", height=50, border_color="#444", fg_color="#0a0010")
+        self.entry_u = ctk.CTkEntry(f, placeholder_text="DESIRED USERNAME", justify="center", height=50, border_color="#444", fg_color="#080010")
         self.entry_u.pack(fill="x", pady=10, padx=20)
         
-        self.entry_p = ctk.CTkEntry(f, placeholder_text="SECURE PASSWORD", show="•", justify="center", height=50, border_color="#444", fg_color="#0a0010")
+        self.entry_p = ctk.CTkEntry(f, placeholder_text="SECURE PASSWORD", show="•", justify="center", height=50, border_color="#444", fg_color="#080010")
         self.entry_p.pack(fill="x", pady=(10, 20), padx=20)
         
-        ctk.CTkButton(self, text="INITIALIZE User", command=self.enviar_registro, height=50, fg_color=COLOR_SUCCESS, hover_color="#00cc52", text_color="black", font=("Segoe UI", 12, "bold")).pack(pady=15, padx=30, fill="x")
+        ctk.CTkButton(self, text="INITIALIZE AGENT", command=self.enviar_registro, height=50, fg_color=COLOR_SUCCESS, hover_color="#00cc52", text_color="black", font=("Segoe UI", 12, "bold")).pack(pady=15, padx=30, fill="x")
         ctk.CTkButton(self, text="ABORT", command=self.destroy, height=40, fg_color="transparent", border_width=1, border_color=COLOR_DANGER, text_color=COLOR_DANGER, hover_color="#330000").pack(pady=5, padx=30, fill="x")
 
     def enviar_registro(self):
@@ -132,7 +181,7 @@ class VentanaRegistro(ctk.CTkToplevel):
         try:
             resp = requests.post(f"{config.API_URL}/keys/redeem", json={"key_code": k, "username": u, "password": p}, timeout=15)
             if resp.status_code == 201: 
-                messagebox.showinfo("Success", "User registered successfully.")
+                messagebox.showinfo("Success", "Agent registered successfully.")
                 self.destroy()
             else: 
                 messagebox.showerror("Access Denied", f"Error: {resp.json().get('detail', 'Invalid Key')}")
@@ -143,6 +192,10 @@ class AdminFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color=COLOR_BG)
         self.controller = controller
         
+        self.anim = CyberRain(self, COLOR_DANGER) 
+        self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # CORREGIDO: Eliminado self.anim.lower()
+
         ctk.CTkLabel(self, text=config.t("adm_title"), font=("Segoe UI", 24, "bold"), text_color="white").pack(pady=30)
         
         self.tab = ctk.CTkTabview(self, width=950, height=550, segmented_button_selected_color=COLOR_ACCENT, segmented_button_selected_hover_color=COLOR_ACCENT_HOVER, fg_color=COLOR_PANEL, text_color="white")
@@ -154,6 +207,8 @@ class AdminFrame(ctk.CTkFrame):
         self.setup_keys(self.tab.tab(config.t("tab_licenses")))
         
         ctk.CTkButton(self, text=config.t("btn_back"), command=lambda: controller.switch_frame(MenuFrame), fg_color="transparent", border_width=1, border_color=COLOR_BORDER, hover_color="#220033", width=200).pack(pady=10)
+
+    def cleanup(self): self.anim.detener()
 
     def get_days(self, duration_text):
         mapping = {"Weekly": 7, "Monthly": 30, "Yearly": 365, "Lifetime": 3650}
@@ -324,6 +379,7 @@ class LoginFrame(ctk.CTkFrame):
         
         self.anim = CyberRain(self, config.COLOR_USER if hasattr(config, 'COLOR_USER') else COLOR_ACCENT)
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # CORREGIDO: Eliminado self.anim.lower()
         
         card = ctk.CTkFrame(self, fg_color="#0a0010", corner_radius=25, border_width=2, border_color=COLOR_BORDER, width=450, height=550)
         card.place(relx=0.5, rely=0.5, anchor="center")
@@ -352,7 +408,7 @@ class LoginFrame(ctk.CTkFrame):
     def validar(self):
         user = self.u.get(); pwd = self.p.get()
         try:
-            resp = requests.post(f"{config.API_URL}/login", data={"username": user, "password": pwd}, timeout=5)
+            resp = requests.post(f"{config.API_URL}/login", data={"username": user, "password": pwd}, timeout=30)
             if resp.status_code == 200:
                 data = resp.json()
                 config.SESSION_TOKEN = data["access_token"]
@@ -360,33 +416,45 @@ class LoginFrame(ctk.CTkFrame):
                 config.USER_NAME = user
                 config.USER_MEMBERSHIP = data["membresia"]
                 
-                # --- LÓGICA CORREGIDA PARA OBTENER VENCIMIENTO ---
-                try:
-                    # Intenta buscar al usuario actual en la lista completa
-                    user_resp = requests.get(f"{config.API_URL}/users", headers=utils.get_auth_headers(), timeout=5)
-                    found_expiry = None
-                    if user_resp.status_code == 200:
-                        for u in user_resp.json():
-                            if u['username'] == user:
-                                found_expiry = u.get('vencimiento')
-                                break
-                    
-                    if found_expiry:
-                        config.USER_EXPIRY = found_expiry
-                    else:
-                        config.USER_EXPIRY = "LIFETIME / INDEFINIDO" # Valor por defecto si no hay fecha
-                except:
-                    config.USER_EXPIRY = "LIFETIME / INDEFINIDO" # Valor por defecto si falla la red
-                
+                config.USER_EXPIRY = "LIFETIME / INDEFINIDO"
+                if "vencimiento" in data and data["vencimiento"]:
+                    config.USER_EXPIRY = data["vencimiento"]
+                else:
+                    headers = {"Authorization": f"Bearer {config.SESSION_TOKEN}"}
+                    try:
+                        r_me = requests.get(f"{config.API_URL}/users/me", headers=headers, timeout=5)
+                        if r_me.status_code == 200:
+                            val = r_me.json().get("vencimiento")
+                            if val: config.USER_EXPIRY = val
+                        else:
+                            r_user = requests.get(f"{config.API_URL}/users/{user}", headers=headers, timeout=3)
+                            if r_user.status_code == 200:
+                                val = r_user.json().get("vencimiento")
+                                if val: config.USER_EXPIRY = val
+                            elif config.USER_ROLE == 'admin':
+                                r_all = requests.get(f"{config.API_URL}/users", headers=headers, timeout=5)
+                                if r_all.status_code == 200:
+                                    for u in r_all.json():
+                                        if u['username'] == user and u.get('vencimiento'):
+                                            config.USER_EXPIRY = u['vencimiento']
+                                            break
+                    except: pass
+
                 self.controller.switch_frame(MenuFrame)
-            else: messagebox.showerror("Access Denied", "Invalid credentials.")
-        except: messagebox.showerror("Error", "Connection to Mainframe Failed.")
+            else: 
+                messagebox.showerror("Access Denied", f"Credenciales inválidas.\nStatus: {resp.status_code}")
+        except Exception as e: 
+            messagebox.showerror("Error de Conexión", f"No se pudo conectar al servidor.\n\nDetalle: {e}")
 
 class MenuFrame(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent, fg_color=COLOR_BG)
         self.controller = controller
         
+        self.anim = CyberRain(self, COLOR_ACCENT)
+        self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # CORREGIDO: Eliminado self.anim.lower()
+
         # 1. Cabecera con Logo
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
         header_frame.pack(pady=(20, 10))
@@ -401,7 +469,7 @@ class MenuFrame(ctk.CTkFrame):
 
         ctk.CTkLabel(header_frame, text="SCANNELER", font=("Segoe UI", 32, "bold"), text_color="white").pack(pady=(5, 0))
         
-        info_text = f"USER: {config.USER_NAME.upper()}  |  PLAN: {config.USER_MEMBERSHIP.upper()}" if config.USER_NAME else "DEV MODE"
+        info_text = f"AGENT: {config.USER_NAME.upper()}  |  PLAN: {config.USER_MEMBERSHIP.upper()}" if config.USER_NAME else "DEV MODE"
         ctk.CTkLabel(header_frame, text=info_text, font=("Consolas", 12), text_color=COLOR_ACCENT).pack()
         
         # 2. Grid Central
@@ -428,6 +496,8 @@ class MenuFrame(ctk.CTkFrame):
 
         ctk.CTkButton(self, text=config.t("btn_disconnect"), command=sys.exit, fg_color="transparent", border_width=1, border_color=COLOR_BORDER, text_color="#aaa", width=150, height=30).pack(side="bottom", pady=10)
 
+    def cleanup(self): self.anim.detener()
+
     def create_card(self, parent, title, subtitle, color, cmd, r, c):
         card = ModernCard(parent)
         card.grid(row=r, column=c, padx=10, pady=10, sticky="nsew")
@@ -438,7 +508,7 @@ class MenuFrame(ctk.CTkFrame):
         ctk.CTkLabel(inner, text=title, font=("Segoe UI", 18, "bold"), text_color=color).pack(pady=(5, 2))
         ctk.CTkLabel(inner, text=subtitle, font=("Segoe UI", 11), text_color="#888").pack(pady=(0, 15))
         
-        ctk.CTkButton(inner, text="OPEN", command=cmd, fg_color="transparent", border_width=1, border_color=color, text_color=color, hover_color="#220033", width=100, height=32, font=("Segoe UI", 11, "bold")).pack()
+        ctk.CTkButton(inner, text=config.t("btn_open"), command=cmd, fg_color="transparent", border_width=1, border_color=color, text_color=color, hover_color="#220033", width=100, height=32, font=("Segoe UI", 11, "bold")).pack()
 
     def go_admin(self): self.controller.switch_frame(AdminFrame)
     def go_user(self): self.controller.switch_frame(UserConfigFrame)
@@ -449,6 +519,10 @@ class SettingsFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color=COLOR_BG)
         self.controller = controller
         
+        self.anim = CyberRain(self, "#888")
+        self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # CORREGIDO: Eliminado self.anim.lower()
+
         ctk.CTkLabel(self, text=config.t("set_title"), font=("Segoe UI", 24), text_color="white").pack(pady=50)
         
         f = ModernCard(self)
@@ -470,6 +544,8 @@ class SettingsFrame(ctk.CTkFrame):
         
         ctk.CTkButton(self, text=config.t("btn_back"), command=lambda: controller.switch_frame(MenuFrame), fg_color="transparent", border_width=1, border_color=COLOR_BORDER, text_color="#aaa", hover_color="#220033").pack(pady=50)
 
+    def cleanup(self): self.anim.detener()
+
     def set_lang(self, l):
         config.CURRENT_LANGUAGE = l
         self.controller.switch_frame(SettingsFrame)
@@ -481,6 +557,10 @@ class UserConfigFrame(ctk.CTkFrame):
         self.ui_map = {}
         self.rutas = config.HISTORIAL_RUTAS.copy()
         
+        self.anim = CyberRain(self, COLOR_ACCENT)
+        self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # CORREGIDO: Eliminado self.anim.lower()
+
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -499,7 +579,6 @@ class UserConfigFrame(ctk.CTkFrame):
         ctk.CTkButton(sidebar, text=config.t("btn_start"), command=self.go, height=50, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color="black", font=("Segoe UI", 14, "bold")).pack(fill="x", padx=30, pady=10)
         ctk.CTkButton(sidebar, text=config.t("btn_back"), command=lambda: controller.switch_frame(MenuFrame), height=40, fg_color="transparent", border_width=1, border_color=COLOR_BORDER, text_color="#aaa", hover_color="#220033").pack(fill="x", padx=30)
 
-        # --- INFORMACIÓN DE VENCIMIENTO CORREGIDA ---
         if config.USER_EXPIRY and str(config.USER_EXPIRY).lower() != "none":
             expiry_text = str(config.USER_EXPIRY).upper()
         else:
@@ -546,6 +625,8 @@ class UserConfigFrame(ctk.CTkFrame):
             self.create_module_card(scroll, text, key, r, c)
             c += 1
             if c > 1: c = 0; r += 1
+
+    def cleanup(self): self.anim.detener()
 
     def create_input(self, parent, title, val, cmd):
         ctk.CTkLabel(parent, text=title, font=("Segoe UI", 10, "bold"), text_color="#aaa").pack(anchor="w", padx=30, pady=(15, 5))
@@ -614,6 +695,7 @@ class ScannerFrame(ctk.CTkFrame):
         
         self.anim = CyberRain(self, COLOR_SUCCESS)
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # CORREGIDO: Eliminado self.anim.lower()
         
         box = ctk.CTkFrame(self, fg_color="#0a0010", corner_radius=20, border_color=COLOR_BORDER, border_width=1)
         box.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.6, relheight=0.5)
