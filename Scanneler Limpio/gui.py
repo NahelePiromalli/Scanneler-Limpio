@@ -107,7 +107,7 @@ class VentanaRegistro(ctk.CTkToplevel):
         y = (self.winfo_screenheight() - 600) // 2
         self.geometry(f"+{x}+{y}")
 
-        ctk.CTkLabel(self, text="[ NEW AGENT REGISTRATION ]", font=("Segoe UI", 18, "bold"), text_color=COLOR_SUCCESS).pack(pady=(40, 20))
+        ctk.CTkLabel(self, text="[ NEW USER REGISTRATION ]", font=("Segoe UI", 18, "bold"), text_color=COLOR_SUCCESS).pack(pady=(40, 20))
         
         f = ModernCard(self)
         f.pack(fill="x", padx=30, pady=10)
@@ -121,7 +121,7 @@ class VentanaRegistro(ctk.CTkToplevel):
         self.entry_p = ctk.CTkEntry(f, placeholder_text="SECURE PASSWORD", show="•", justify="center", height=50, border_color="#444", fg_color="#0a0010")
         self.entry_p.pack(fill="x", pady=(10, 20), padx=20)
         
-        ctk.CTkButton(self, text="INITIALIZE AGENT", command=self.enviar_registro, height=50, fg_color=COLOR_SUCCESS, hover_color="#00cc52", text_color="black", font=("Segoe UI", 12, "bold")).pack(pady=15, padx=30, fill="x")
+        ctk.CTkButton(self, text="INITIALIZE User", command=self.enviar_registro, height=50, fg_color=COLOR_SUCCESS, hover_color="#00cc52", text_color="black", font=("Segoe UI", 12, "bold")).pack(pady=15, padx=30, fill="x")
         ctk.CTkButton(self, text="ABORT", command=self.destroy, height=40, fg_color="transparent", border_width=1, border_color=COLOR_DANGER, text_color=COLOR_DANGER, hover_color="#330000").pack(pady=5, padx=30, fill="x")
 
     def enviar_registro(self):
@@ -132,7 +132,7 @@ class VentanaRegistro(ctk.CTkToplevel):
         try:
             resp = requests.post(f"{config.API_URL}/keys/redeem", json={"key_code": k, "username": u, "password": p}, timeout=15)
             if resp.status_code == 201: 
-                messagebox.showinfo("Success", "Agent registered successfully.")
+                messagebox.showinfo("Success", "User registered successfully.")
                 self.destroy()
             else: 
                 messagebox.showerror("Access Denied", f"Error: {resp.json().get('detail', 'Invalid Key')}")
@@ -401,7 +401,7 @@ class MenuFrame(ctk.CTkFrame):
 
         ctk.CTkLabel(header_frame, text="SCANNELER", font=("Segoe UI", 32, "bold"), text_color="white").pack(pady=(5, 0))
         
-        info_text = f"AGENT: {config.USER_NAME.upper()}  |  PLAN: {config.USER_MEMBERSHIP.upper()}" if config.USER_NAME else "DEV MODE"
+        info_text = f"USER: {config.USER_NAME.upper()}  |  PLAN: {config.USER_MEMBERSHIP.upper()}" if config.USER_NAME else "DEV MODE"
         ctk.CTkLabel(header_frame, text=info_text, font=("Consolas", 12), text_color=COLOR_ACCENT).pack()
         
         # 2. Grid Central
