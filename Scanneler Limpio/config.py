@@ -33,50 +33,50 @@ CURRENT_LANGUAGE = "es"
 
 TRADUCCIONES = {
     "es": {
-        "login_title": "ACCESO AL SISTEMA",
-        "user_lbl": "USUARIO",
-        "pass_lbl": "CONTRASEÑA",
-        "btn_login": "INICIAR SESIÓN",
+        "login_title": "AUTENTICACIÓN",
+        "user_ph": "USUARIO",
+        "pass_ph": "CONTRASEÑA",
+        "btn_connect": "CONECTAR",
         "btn_redeem": "CANJEAR LICENCIA",
         "btn_exit": "SALIR",
         "menu_admin": "PANEL ADMIN",
-        "menu_user": "PANEL USUARIO",
-        "menu_settings": "CONFIGURACIÓN",
+        "menu_user": "SCANNER",
+        "menu_settings": "AJUSTES",
         "welcome": "BIENVENIDO",
-        "scan_config": "CONFIGURACIÓN DE ESCANEO",
+        "scan_config": "CONFIGURACIÓN",
         "path_lbl": "RUTA REPORTE:",
-        "folder_lbl": "NOMBRE CARPETA:",
+        "folder_lbl": "CARPETA:",
         "list_lbl": "LISTA PALABRAS:",
         "target_lbl": "ARCHIVO TARGET:", 
         "btn_select": "SELECCIONAR",
         "btn_browse": "BUSCAR",
         "btn_pick": "ELEGIR",
         "modules_lbl": "MÓDULOS DE DETECCIÓN:",
-        "sel_all": "[ MARCAR TODOS ]",
-        "desel_all": "[ DESMARCAR ]",
+        "sel_all": "TODOS",
+        "desel_all": "NINGUNO",
         "upgrade": "MEJORA TU PLAN",
-        "only_list": "Solo Modo Lista",
-        "btn_start": "INICIAR MOTOR DE ESCANEO",
-        "btn_back": "VOLVER AL MENÚ",
+        "only_list": "Modo Lista",
+        "btn_start": "INICIAR ESCANEO",
+        "btn_back": "VOLVER",
         "audit_prog": "AUDITORÍA EN PROGRESO...",
         "init": "Inicializando...",
-        "stop_scan": "DETENER ESCANEO",
-        "settings_title": "CONFIGURACIÓN DEL SISTEMA",
+        "stop_scan": "DETENER",
+        "settings_title": "CONFIGURACIÓN",
         "lang_lbl": "SELECCIONAR IDIOMA / SELECT LANGUAGE",
         "success_update": "Idioma actualizado correctamente."
     },
     "en": {
-        "login_title": "SYSTEM ACCESS",
-        "user_lbl": "USERNAME",
-        "pass_lbl": "PASSWORD",
-        "btn_login": "LOGIN",
+        "login_title": "AUTHENTICATION",
+        "user_ph": "USERNAME",
+        "pass_ph": "PASSWORD",
+        "btn_connect": "CONNECT",
         "btn_redeem": "REDEEM LICENSE",
         "btn_exit": "EXIT",
         "menu_admin": "ADMIN PANEL",
-        "menu_user": "USER PANEL",
+        "menu_user": "SCANNER",
         "menu_settings": "SETTINGS",
         "welcome": "WELCOME",
-        "scan_config": "SCANNER CONFIGURATION",
+        "scan_config": "CONFIGURATION",
         "path_lbl": "OUTPUT PATH:",
         "folder_lbl": "FOLDER NAME:",
         "list_lbl": "KEYWORD LIST:",
@@ -85,12 +85,12 @@ TRADUCCIONES = {
         "btn_browse": "BROWSE",
         "btn_pick": "CHOOSE",
         "modules_lbl": "DETECTION MODULES:",
-        "sel_all": "[ SELECT ALL ]",
-        "desel_all": "[ DESELECT ALL ]",
+        "sel_all": "ALL",
+        "desel_all": "NONE",
         "upgrade": "UPGRADE PLAN",
-        "only_list": "List Mode Only",
-        "btn_start": "START SCAN ENGINE",
-        "btn_back": "BACK TO MENU",
+        "only_list": "List Mode",
+        "btn_start": "START SCAN",
+        "btn_back": "BACK",
         "audit_prog": "AUDIT IN PROGRESS...",
         "init": "Initializing...",
         "stop_scan": "STOP SCAN",
@@ -103,20 +103,19 @@ TRADUCCIONES = {
 def t(key):
     return TRADUCCIONES.get(CURRENT_LANGUAGE, TRADUCCIONES["es"]).get(key, key)
 
-# Colores Cyberpunk
-COLOR_SUCCESS = "#69f0ae"   
-COLOR_BG = "#090011"        
-COLOR_CARD = "#1a0526"      
-COLOR_ACCENT = "#d500f9"    
-COLOR_USER = "#b388ff"      
-COLOR_TEXT = "#f3e5f5"      
-COLOR_BORDER = "#4a148c"    
-COLOR_HOVER_BG = "#4a0072"  
-COLOR_HOVER_BORDER = "#ff40ff"
-COLOR_DANGER = "#ff1744"    
-COLOR_CLICK = "#000000"     
+# ==========================================
+# PALETA DE COLORES (VIOLET EDITION 2026)
+# ==========================================
+COLOR_BG = "#020005"            # Fondo casi negro con tinte violeta
+COLOR_CARD = "#12001F"          # Tarjetas violeta muy oscuro
+COLOR_ACCENT = "#D500F9"        # Violeta Neón Brillante (Principal)
+COLOR_ACCENT_HOVER = "#A000C8"  # Violeta Oscuro para Hover
+COLOR_DANGER = "#FF0055"        # Rojo Rosado Neon
+COLOR_SUCCESS = "#00E676"       # Verde Neon (Contraste)
+COLOR_TEXT = "#E0B0FF"          # Blanco Lila
+COLOR_BORDER = "#4A0072"        # Bordes Púrpura
 
-# Nombres de Reportes (Se actualizan dinamicamente con la ruta completa)
+# Nombres de Reportes
 reporte_shim = ""
 reporte_appcompat = ""
 reporte_path = ""
