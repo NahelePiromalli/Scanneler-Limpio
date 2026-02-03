@@ -28,50 +28,33 @@ COLOR_ACCENT_HOVER = getattr(config, 'COLOR_ACCENT_HOVER', "#A000C8")
 COLOR_DANGER = getattr(config, 'COLOR_DANGER', "#FF0055")
 COLOR_SUCCESS = getattr(config, 'COLOR_SUCCESS', "#00E676")
 COLOR_TEXT = getattr(config, 'COLOR_TEXT', "#E0B0FF")
-COLOR_BORDER = getattr(config, 'COLOR_BORDER', "#4A0072") # Violeta oscuro
+COLOR_BORDER = getattr(config, 'COLOR_BORDER', "#4A0072")
 
 # =============================================================================
-# 1. COMPONENTES VISUALES AVANZADOS
+# 1. COMPONENTES VISUALES
 # =============================================================================
 
 class CyberRain(ctk.CTkCanvas):
-    """
-    Fondo Dinámico: Lluvia Matrix + Grid de Perspectiva + Scanline CRT
-    """
     def __init__(self, master, color_accent, **kwargs):
         super().__init__(master, bg=COLOR_BG, highlightthickness=0, **kwargs)
         self.color = color_accent
         self.drops = []
-        self.scanline_y = 0
         self.width = self.winfo_screenwidth()
         self.height = self.winfo_screenheight()
         self.is_running = True
         self.after_id = None
-        
-        # Iniciar efectos
-        self.crear_grid()
         self.crear_gotas()
         self.animar()
         
-    def crear_grid(self):
-        """Dibuja una cuadrícula 'Tech' en el fondo"""
-        # Líneas verticales
-        for x in range(0, self.width, 100):
-            self.create_line(x, 0, x, self.height, fill="#0a0014", width=1)
-        # Líneas horizontales
-        for y in range(0, self.height, 100):
-            self.create_line(0, y, self.width, y, fill="#0a0014", width=1)
-
     def crear_gotas(self):
         try:
             for _ in range(60): 
                 x = random.randint(0, self.width)
                 y = random.randint(-500, self.height)
-                speed = random.randint(3, 8)
-                char = random.choice(["0", "1", "x", "FF", "A4", "Ω", "⚡"])
-                # Color aleatorio (Neon o Apagado)
-                c = self.color if random.random() > 0.7 else "#2a003b"
-                tag = self.create_text(x, y, text=char, fill=c, font=("Consolas", 10), tag="rain")
+                speed = random.randint(3, 7)
+                char = random.choice(["0", "1", "x", "FF", "A4", "Ω"])
+                rain_color = random.choice([self.color, "#333333"])
+                tag = self.create_text(x, y, text=char, fill=rain_color, font=("Consolas", 10), tag="rain")
                 self.drops.append([tag, speed, y])
         except: pass
         
@@ -81,10 +64,7 @@ class CyberRain(ctk.CTkCanvas):
             if not self.winfo_exists(): 
                 self.is_running = False
                 return
-            
             h = 1500 
-            
-            # 1. Animar Lluvia
             for i in range(len(self.drops)):
                 tag, speed, y = self.drops[i]
                 y += speed
@@ -94,16 +74,6 @@ class CyberRain(ctk.CTkCanvas):
                 else: 
                     self.move(tag, 0, speed)
                 self.drops[i][2] = y
-            
-            # 2. Animar Scanline (Barra de barrido)
-            self.delete("scanline")
-            self.scanline_y += 5
-            if self.scanline_y > self.height: self.scanline_y = -100
-            
-            # Dibujar la línea de escaneo semitransparente (simulada con stipple)
-            self.create_line(0, self.scanline_y, self.width, self.scanline_y, 
-                             fill=self.color, width=2, tag="scanline", stipple="gray50")
-            
             self.after_id = self.after(30, self.animar)
         except: self.is_running = False
         
@@ -115,54 +85,8 @@ class CyberRain(ctk.CTkCanvas):
             self.after_id = None
 
 class ModernCard(ctk.CTkFrame):
-    """ 
-    Panel con efecto 'Breathing Neon': El borde pulsa suavemente.
-    """
     def __init__(self, master, **kwargs):
-        super().__init__(master, corner_radius=15, fg_color=COLOR_PANEL, border_width=2, border_color=COLOR_BORDER, **kwargs)
-        
-        # Variables de animación
-        self.pulse_colors = [COLOR_BORDER, "#5e008c", "#7a00aa", COLOR_ACCENT]
-        self.color_index = 0
-        self.direction = 1
-        self.after_id = None
-        self.is_hovering = False
-        
-        # Iniciar animación suave
-        self.animate_border()
-        
-        # Eventos para acelerar animación al pasar el mouse
-        self.bind("<Enter>", self.on_enter)
-        self.bind("<Leave>", self.on_leave)
-
-    def animate_border(self):
-        try:
-            if not self.winfo_exists(): return
-            
-            # Ciclar colores
-            current_col = self.pulse_colors[self.color_index]
-            self.configure(border_color=current_col)
-            
-            # Lógica de rebote (0 -> 1 -> 2 -> 3 -> 2 -> 1 -> 0)
-            self.color_index += self.direction
-            if self.color_index >= len(self.pulse_colors) - 1:
-                self.direction = -1
-            elif self.color_index <= 0:
-                self.direction = 1
-            
-            # Velocidad: Rápida si el mouse está encima, Lenta si no
-            speed = 50 if self.is_hovering else 150
-            self.after_id = self.after(speed, self.animate_border)
-        except: pass
-
-    def on_enter(self, e):
-        self.is_hovering = True
-        # Efecto inmediato: Borde brillante y fondo ligeramente más claro
-        self.configure(border_color=COLOR_ACCENT, fg_color="#1a002a") 
-
-    def on_leave(self, e):
-        self.is_hovering = False
-        self.configure(fg_color=COLOR_PANEL)
+        super().__init__(master, corner_radius=15, fg_color=COLOR_PANEL, border_width=1, border_color=COLOR_BORDER, **kwargs)
 
 # =============================================================================
 # 2. VENTANAS SECUNDARIAS
@@ -188,17 +112,17 @@ class VentanaRegistro(ctk.CTkToplevel):
         f = ModernCard(self)
         f.pack(fill="x", padx=30, pady=10)
         
-        self.entry_key = ctk.CTkEntry(f, placeholder_text="LICENSE KEY (XXXX-XXXX)", justify="center", height=50, border_color="#444", fg_color="#080010")
+        self.entry_key = ctk.CTkEntry(f, placeholder_text="LICENSE KEY (XXXX-XXXX)", justify="center", height=50, border_color="#444", fg_color="#0a0010")
         self.entry_key.pack(fill="x", pady=(20, 10), padx=20)
         
-        self.entry_u = ctk.CTkEntry(f, placeholder_text="DESIRED USERNAME", justify="center", height=50, border_color="#444", fg_color="#080010")
+        self.entry_u = ctk.CTkEntry(f, placeholder_text="DESIRED USERNAME", justify="center", height=50, border_color="#444", fg_color="#0a0010")
         self.entry_u.pack(fill="x", pady=10, padx=20)
         
-        self.entry_p = ctk.CTkEntry(f, placeholder_text="SECURE PASSWORD", show="•", justify="center", height=50, border_color="#444", fg_color="#080010")
+        self.entry_p = ctk.CTkEntry(f, placeholder_text="SECURE PASSWORD", show="•", justify="center", height=50, border_color="#444", fg_color="#0a0010")
         self.entry_p.pack(fill="x", pady=(10, 20), padx=20)
         
         ctk.CTkButton(self, text="INITIALIZE AGENT", command=self.enviar_registro, height=50, fg_color=COLOR_SUCCESS, hover_color="#00cc52", text_color="black", font=("Segoe UI", 12, "bold")).pack(pady=15, padx=30, fill="x")
-        ctk.CTkButton(self, text="ABORT OPERATION", command=self.destroy, height=40, fg_color="transparent", border_width=1, border_color=COLOR_DANGER, text_color=COLOR_DANGER, hover_color="#330000").pack(pady=5, padx=30, fill="x")
+        ctk.CTkButton(self, text="ABORT", command=self.destroy, height=40, fg_color="transparent", border_width=1, border_color=COLOR_DANGER, text_color=COLOR_DANGER, hover_color="#330000").pack(pady=5, padx=30, fill="x")
 
     def enviar_registro(self):
         k = self.entry_key.get().strip()
@@ -219,42 +143,42 @@ class AdminFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color=COLOR_BG)
         self.controller = controller
         
-        ctk.CTkLabel(self, text="ADMINISTRATION PANEL", font=("Segoe UI", 24, "bold"), text_color="white").pack(pady=30)
+        ctk.CTkLabel(self, text=config.t("adm_title"), font=("Segoe UI", 24, "bold"), text_color="white").pack(pady=30)
         
-        self.tab = ctk.CTkTabview(self, width=950, height=550, segmented_button_selected_color=COLOR_ACCENT, segmented_button_selected_hover_color=COLOR_ACCENT_HOVER)
+        self.tab = ctk.CTkTabview(self, width=950, height=550, segmented_button_selected_color=COLOR_ACCENT, segmented_button_selected_hover_color=COLOR_ACCENT_HOVER, fg_color=COLOR_PANEL, text_color="white")
         self.tab.pack(fill="both", expand=True, padx=30, pady=(0, 20))
-        self.tab.add("USERS")
-        self.tab.add("LICENSES")
+        self.tab.add(config.t("tab_users"))
+        self.tab.add(config.t("tab_licenses"))
         
-        self.setup_users(self.tab.tab("USERS"))
-        self.setup_keys(self.tab.tab("LICENSES"))
+        self.setup_users(self.tab.tab(config.t("tab_users")))
+        self.setup_keys(self.tab.tab(config.t("tab_licenses")))
         
-        ctk.CTkButton(self, text="BACK TO MENU", command=lambda: controller.switch_frame(MenuFrame), fg_color="#333", hover_color="#444", width=200).pack(pady=10)
+        ctk.CTkButton(self, text=config.t("btn_back"), command=lambda: controller.switch_frame(MenuFrame), fg_color="transparent", border_width=1, border_color=COLOR_BORDER, hover_color="#220033", width=200).pack(pady=10)
 
     def get_days(self, duration_text):
         mapping = {"Weekly": 7, "Monthly": 30, "Yearly": 365, "Lifetime": 3650}
         return mapping.get(duration_text, 30)
 
     def setup_users(self, p):
-        f = ctk.CTkFrame(p, fg_color="#111", corner_radius=10)
+        f = ctk.CTkFrame(p, fg_color="#1a002a", corner_radius=10)
         f.pack(fill="x", padx=10, pady=10)
         
-        ctk.CTkLabel(f, text="EDIT USER:", font=("Consolas", 10, "bold"), text_color=COLOR_ACCENT).pack(side="left", padx=10)
-        self.u_e = ctk.CTkEntry(f, placeholder_text="Username", width=150, border_color="#444")
+        ctk.CTkLabel(f, text=config.t("lbl_edit_user"), font=("Consolas", 10, "bold"), text_color=COLOR_ACCENT).pack(side="left", padx=10)
+        self.u_e = ctk.CTkEntry(f, placeholder_text="Username", width=150, border_color="#444", fg_color="#0a0010")
         self.u_e.pack(side="left", padx=5, pady=10)
         
-        self.m_c = ctk.CTkComboBox(f, values=["Basic", "Medium", "Full"], width=100, border_color="#444", button_color="#333")
+        self.m_c = ctk.CTkComboBox(f, values=["Basic", "Medium", "Full"], width=100, border_color="#444", button_color="#333", fg_color="#0a0010")
         self.m_c.set("Basic")
         self.m_c.pack(side="left", padx=5)
         
-        self.d_c = ctk.CTkComboBox(f, values=["Weekly", "Monthly", "Yearly", "Lifetime"], width=100, border_color="#444", button_color="#333")
+        self.d_c = ctk.CTkComboBox(f, values=["Weekly", "Monthly", "Yearly", "Lifetime"], width=100, border_color="#444", button_color="#333", fg_color="#0a0010")
         self.d_c.set("Monthly")
         self.d_c.pack(side="left", padx=5)
         
-        ctk.CTkButton(f, text="UPDATE PLAN", command=self.upd_u, width=100, fg_color=COLOR_ACCENT, text_color="black", hover_color=COLOR_ACCENT_HOVER).pack(side="left", padx=10)
-        ctk.CTkButton(f, text="REFRESH", command=self.ref_u, width=80, fg_color="#333").pack(side="right", padx=10)
+        ctk.CTkButton(f, text=config.t("btn_update"), command=self.upd_u, width=100, fg_color=COLOR_ACCENT, text_color="black", hover_color=COLOR_ACCENT_HOVER).pack(side="left", padx=10)
+        ctk.CTkButton(f, text=config.t("btn_refresh"), command=self.ref_u, width=80, fg_color="transparent", border_width=1, border_color=COLOR_BORDER).pack(side="right", padx=10)
         
-        self.lst = ctk.CTkScrollableFrame(p, label_text="REGISTERED AGENTS DATABASE", fg_color="transparent")
+        self.lst = ctk.CTkScrollableFrame(p, label_text=config.t("lbl_db"), fg_color="transparent")
         self.lst.pack(fill="both", expand=True, padx=10, pady=5)
         self.ref_u()
 
@@ -262,35 +186,33 @@ class AdminFrame(ctk.CTkFrame):
         center = ctk.CTkFrame(p, fg_color="transparent")
         center.pack(fill="both", expand=True, padx=50, pady=20)
         
-        ctk.CTkLabel(center, text="LICENSE GENERATOR", font=("Segoe UI", 16, "bold"), text_color=COLOR_SUCCESS).grid(row=0, column=0, columnspan=4, pady=(0, 20), sticky="w")
+        ctk.CTkLabel(center, text=config.t("lbl_gen_lic"), font=("Segoe UI", 16, "bold"), text_color=COLOR_SUCCESS).grid(row=0, column=0, columnspan=4, pady=(0, 20), sticky="w")
         
-        ctk.CTkLabel(center, text="MEMBERSHIP TIER:").grid(row=1, column=0, padx=10, pady=10, sticky="w")
-        self.k_m = ctk.CTkComboBox(center, values=["Basic", "Medium", "Full"], width=200, border_color="#444")
+        ctk.CTkLabel(center, text=config.t("lbl_memb")).grid(row=1, column=0, padx=10, pady=10, sticky="w")
+        self.k_m = ctk.CTkComboBox(center, values=["Basic", "Medium", "Full"], width=200, border_color="#444", fg_color="#0a0010")
         self.k_m.set("Full")
         self.k_m.grid(row=1, column=1, padx=10, pady=10)
         
-        ctk.CTkLabel(center, text="DURATION:").grid(row=2, column=0, padx=10, pady=10, sticky="w")
-        self.k_d = ctk.CTkComboBox(center, values=["Weekly", "Monthly", "Yearly", "Lifetime"], width=200, border_color="#444")
+        ctk.CTkLabel(center, text=config.t("lbl_dur")).grid(row=2, column=0, padx=10, pady=10, sticky="w")
+        self.k_d = ctk.CTkComboBox(center, values=["Weekly", "Monthly", "Yearly", "Lifetime"], width=200, border_color="#444", fg_color="#0a0010")
         self.k_d.set("Monthly")
         self.k_d.grid(row=2, column=1, padx=10, pady=10)
         
-        ctk.CTkLabel(center, text="QUANTITY:").grid(row=3, column=0, padx=10, pady=10, sticky="w")
-        self.k_q = ctk.CTkEntry(center, width=200, border_color="#444", justify="center")
+        ctk.CTkLabel(center, text=config.t("lbl_qty")).grid(row=3, column=0, padx=10, pady=10, sticky="w")
+        self.k_q = ctk.CTkEntry(center, width=200, border_color="#444", justify="center", fg_color="#0a0010")
         self.k_q.insert(0, "1")
         self.k_q.grid(row=3, column=1, padx=10, pady=10)
         
-        ctk.CTkButton(center, text="GENERATE KEYS", command=self.gen_k, fg_color=COLOR_SUCCESS, text_color="black", hover_color="#00cc52", height=40).grid(row=4, column=0, columnspan=2, pady=30, sticky="ew")
+        ctk.CTkButton(center, text=config.t("btn_gen"), command=self.gen_k, fg_color=COLOR_SUCCESS, text_color="black", hover_color="#00cc52", height=40).grid(row=4, column=0, columnspan=2, pady=30, sticky="ew")
         
-        ctk.CTkLabel(center, text="LOG:", text_color="gray", font=("Consolas", 10)).grid(row=0, column=2, sticky="w", padx=20)
-        self.k_out = ctk.CTkTextbox(center, width=400, height=300, font=("Consolas", 11), fg_color="#080808", border_color="#333", border_width=1)
+        ctk.CTkLabel(center, text=config.t("lbl_log"), text_color="gray", font=("Consolas", 10)).grid(row=0, column=2, sticky="w", padx=20)
+        self.k_out = ctk.CTkTextbox(center, width=400, height=300, font=("Consolas", 11), fg_color="#0a0010", border_color="#333", border_width=1)
         self.k_out.grid(row=1, column=2, rowspan=5, padx=20, sticky="nsew")
 
     def ref_u(self):
-        for w in self.lst.winfo_children():
-             if isinstance(w, ctk.CTkFrame) and w.winfo_height() > 30: w.destroy()
-        
         widgets = self.lst.winfo_children()
-        for i in range(1, len(widgets)): widgets[i].destroy()
+        for i in range(len(widgets)):
+             if isinstance(widgets[i], ctk.CTkFrame) and widgets[i].winfo_height() > 30: widgets[i].destroy()
 
         try:
             r = requests.get(f"{config.API_URL}/users", headers=utils.get_auth_headers(), timeout=5)
@@ -376,7 +298,7 @@ class CargaDinamicaFrame(ctk.CTkFrame):
         self.pb.pack(pady=(40, 10))
         self.pb.set(0)
         
-        self.loading_text = ctk.CTkLabel(self.center_box, text="INITIALIZING...", font=("Consolas", 10), text_color="gray")
+        self.loading_text = ctk.CTkLabel(self.center_box, text=config.t("init"), font=("Consolas", 10), text_color="gray")
         self.loading_text.pack(pady=(0, 20))
         
         self.after(500, self.iniciar_carga)
@@ -407,8 +329,8 @@ class LoginFrame(ctk.CTkFrame):
         card.place(relx=0.5, rely=0.5, anchor="center")
         card.pack_propagate(False) 
         
-        ctk.CTkLabel(card, text="SECURE ACCESS", font=("Segoe UI", 32, "bold"), text_color="white").pack(pady=(50, 10))
-        ctk.CTkLabel(card, text="IDENTITY VERIFICATION", font=("Consolas", 12), text_color=COLOR_ACCENT).pack(pady=(0, 40))
+        ctk.CTkLabel(card, text=config.t("login_title"), font=("Segoe UI", 32, "bold"), text_color="white").pack(pady=(50, 10))
+        ctk.CTkLabel(card, text=config.t("login_sub"), font=("Consolas", 12), text_color=COLOR_ACCENT).pack(pady=(0, 40))
         
         self.u = ctk.CTkEntry(card, placeholder_text=config.t("user_ph"), width=320, height=50, font=("Segoe UI", 14), border_color=COLOR_BORDER, justify="center", fg_color="#1a002a")
         self.u.pack(pady=10)
@@ -437,12 +359,25 @@ class LoginFrame(ctk.CTkFrame):
                 config.USER_ROLE = data["role"]
                 config.USER_NAME = user
                 config.USER_MEMBERSHIP = data["membresia"]
+                
+                # --- LÓGICA CORREGIDA PARA OBTENER VENCIMIENTO ---
                 try:
+                    # Intenta buscar al usuario actual en la lista completa
                     user_resp = requests.get(f"{config.API_URL}/users", headers=utils.get_auth_headers(), timeout=5)
+                    found_expiry = None
                     if user_resp.status_code == 200:
-                        my_user = next((u for u in user_resp.json() if u['username'] == user), None)
-                        config.USER_EXPIRY = my_user['vencimiento'] if my_user and my_user.get('vencimiento') else "LIFETIME"
-                except: config.USER_EXPIRY = "LIFETIME"
+                        for u in user_resp.json():
+                            if u['username'] == user:
+                                found_expiry = u.get('vencimiento')
+                                break
+                    
+                    if found_expiry:
+                        config.USER_EXPIRY = found_expiry
+                    else:
+                        config.USER_EXPIRY = "LIFETIME / INDEFINIDO" # Valor por defecto si no hay fecha
+                except:
+                    config.USER_EXPIRY = "LIFETIME / INDEFINIDO" # Valor por defecto si falla la red
+                
                 self.controller.switch_frame(MenuFrame)
             else: messagebox.showerror("Access Denied", "Invalid credentials.")
         except: messagebox.showerror("Error", "Connection to Mainframe Failed.")
@@ -452,11 +387,10 @@ class MenuFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color=COLOR_BG)
         self.controller = controller
         
-        # --- 1. LOGO Y CABECERA (ARRIBA) ---
+        # 1. Cabecera con Logo
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
         header_frame.pack(pady=(20, 10))
 
-        # Intentar cargar logo
         try:
             img_path = utils.resource_path("Scanneler.png")
             if os.path.exists(img_path):
@@ -467,40 +401,32 @@ class MenuFrame(ctk.CTkFrame):
 
         ctk.CTkLabel(header_frame, text="SCANNELER", font=("Segoe UI", 32, "bold"), text_color="white").pack(pady=(5, 0))
         
-        # Info del usuario
         info_text = f"AGENT: {config.USER_NAME.upper()}  |  PLAN: {config.USER_MEMBERSHIP.upper()}" if config.USER_NAME else "DEV MODE"
         ctk.CTkLabel(header_frame, text=info_text, font=("Consolas", 12), text_color=COLOR_ACCENT).pack()
         
-        # --- 2. GRID DE TARJETAS (CENTRO) ---
+        # 2. Grid Central
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=40, pady=10)
-        
         main.rowconfigure(0, weight=1)
         
-        # Lógica de distribución
         if config.USER_ROLE == 'admin':
             main.columnconfigure((0, 1, 2), weight=1)
-            self.create_card(main, "SCANNER", "Forensic Audit", COLOR_ACCENT, self.go_user, 0, 0)
-            self.create_card(main, "ADMIN PANEL", "Database & Keys", COLOR_DANGER, self.go_admin, 0, 1)
-            self.create_card(main, "SETTINGS", "Preferences", "#888", self.go_settings, 0, 2)
+            self.create_card(main, config.t("menu_scanner"), config.t("sub_scanner"), COLOR_ACCENT, self.go_user, 0, 0)
+            self.create_card(main, config.t("menu_admin"), config.t("sub_admin"), COLOR_DANGER, self.go_admin, 0, 1)
+            self.create_card(main, config.t("menu_settings"), config.t("sub_settings"), "#888", self.go_settings, 0, 2)
         else:
             main.columnconfigure((0, 1), weight=1)
-            self.create_card(main, "SCANNER", "Forensic Audit", COLOR_ACCENT, self.go_user, 0, 0)
-            self.create_card(main, "SETTINGS", "Preferences", "#888", self.go_settings, 0, 1)
+            self.create_card(main, config.t("menu_scanner"), config.t("sub_scanner"), COLOR_ACCENT, self.go_user, 0, 0)
+            self.create_card(main, config.t("menu_settings"), config.t("sub_settings"), "#888", self.go_settings, 0, 1)
 
-        # --- 3. FOOTER (CRÉDITOS Y CONTACTO) ---
-        # Usamos side="bottom" para que se pegue abajo. El orden de pack importa (el primero se pega al borde).
-        
-        # Contenedor para los textos de abajo
+        # 3. Footer
         footer_frame = ctk.CTkFrame(self, fg_color="transparent")
         footer_frame.pack(side="bottom", pady=(0, 20))
         
-        # Textos solicitados en Violeta (COLOR_ACCENT)
-        ctk.CTkLabel(footer_frame, text="Contact: Scanneler.Jeler33@gmail.com", font=("Consolas", 11), text_color=COLOR_ACCENT).pack()
-        ctk.CTkLabel(footer_frame, text="Made By Jeler33", font=("Segoe UI", 12, "bold"), text_color=COLOR_ACCENT).pack()
+        ctk.CTkLabel(footer_frame, text=config.t("footer_contact"), font=("Consolas", 11), text_color=COLOR_ACCENT).pack()
+        ctk.CTkLabel(footer_frame, text=config.t("footer_made"), font=("Segoe UI", 12, "bold"), text_color=COLOR_ACCENT).pack()
 
-        # Botón de desconexión (arriba del footer de texto)
-        ctk.CTkButton(self, text="DISCONNECT", command=sys.exit, fg_color="transparent", border_width=1, border_color="#333", text_color="#666", width=150, height=30).pack(side="bottom", pady=(10, 10))
+        ctk.CTkButton(self, text=config.t("btn_disconnect"), command=sys.exit, fg_color="transparent", border_width=1, border_color=COLOR_BORDER, text_color="#aaa", width=150, height=30).pack(side="bottom", pady=10)
 
     def create_card(self, parent, title, subtitle, color, cmd, r, c):
         card = ModernCard(parent)
@@ -512,7 +438,7 @@ class MenuFrame(ctk.CTkFrame):
         ctk.CTkLabel(inner, text=title, font=("Segoe UI", 18, "bold"), text_color=color).pack(pady=(5, 2))
         ctk.CTkLabel(inner, text=subtitle, font=("Segoe UI", 11), text_color="#888").pack(pady=(0, 15))
         
-        ctk.CTkButton(inner, text="OPEN", command=cmd, fg_color="transparent", border_width=1, border_color=color, text_color=color, hover_color=f"{color}22", width=100, height=32, font=("Segoe UI", 11, "bold")).pack()
+        ctk.CTkButton(inner, text="OPEN", command=cmd, fg_color="transparent", border_width=1, border_color=color, text_color=color, hover_color="#220033", width=100, height=32, font=("Segoe UI", 11, "bold")).pack()
 
     def go_admin(self): self.controller.switch_frame(AdminFrame)
     def go_user(self): self.controller.switch_frame(UserConfigFrame)
@@ -523,12 +449,12 @@ class SettingsFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color=COLOR_BG)
         self.controller = controller
         
-        ctk.CTkLabel(self, text=config.t("settings_title"), font=("Segoe UI", 24), text_color="white").pack(pady=50)
+        ctk.CTkLabel(self, text=config.t("set_title"), font=("Segoe UI", 24), text_color="white").pack(pady=50)
         
         f = ModernCard(self)
         f.pack(padx=100, pady=20, fill="x")
         
-        ctk.CTkLabel(f, text=config.t("lang_lbl"), font=("Segoe UI", 14, "bold"), text_color=COLOR_TEXT).pack(pady=20)
+        ctk.CTkLabel(f, text=config.t("lbl_lang"), font=("Segoe UI", 14, "bold"), text_color=COLOR_TEXT).pack(pady=20)
         
         btn_frame = ctk.CTkFrame(f, fg_color="transparent")
         btn_frame.pack(pady=20)
@@ -555,85 +481,66 @@ class UserConfigFrame(ctk.CTkFrame):
         self.ui_map = {}
         self.rutas = config.HISTORIAL_RUTAS.copy()
         
-        # Grid Principal
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- SIDEBAR (IZQUIERDA) ---
         sidebar = ctk.CTkFrame(self, width=320, corner_radius=0, fg_color=COLOR_PANEL)
         sidebar.grid(row=0, column=0, sticky="nsew")
         
-        ctk.CTkLabel(sidebar, text="CONFIGURATION", font=("Segoe UI", 20, "bold"), text_color="white").pack(pady=(40, 30), padx=30, anchor="w")
+        ctk.CTkLabel(sidebar, text=config.t("cfg_title"), font=("Segoe UI", 20, "bold"), text_color="white").pack(pady=(40, 30), padx=30, anchor="w")
         
-        # Inputs
-        self.create_input(sidebar, "OUTPUT PATH", self.rutas['path'], self.select_path)
-        self.create_input(sidebar, "FOLDER NAME", self.rutas['folder'], None)
-        self.create_input(sidebar, "KEYWORD LIST", self.rutas['list_path'], self.select_list)
-        self.create_input(sidebar, "TARGET FILE (Phase 25)", "", self.select_target)
+        self.create_input(sidebar, config.t("lbl_path"), self.rutas['path'], self.select_path)
+        self.create_input(sidebar, config.t("lbl_folder"), self.rutas['folder'], None)
+        self.create_input(sidebar, config.t("lbl_list"), self.rutas['list_path'], self.select_list)
+        self.create_input(sidebar, config.t("lbl_target"), "", self.select_target)
         
-        # Separador y Botones
         ctk.CTkFrame(sidebar, height=1, fg_color=COLOR_BORDER).pack(fill="x", padx=30, pady=30)
         
-        ctk.CTkButton(sidebar, text="START SCAN", command=self.go, height=50, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color="black", font=("Segoe UI", 14, "bold")).pack(fill="x", padx=30, pady=10)
-        ctk.CTkButton(sidebar, text="BACK", command=lambda: controller.switch_frame(MenuFrame), height=40, fg_color="transparent", border_width=1, border_color=COLOR_BORDER, text_color="#aaa", hover_color="#220033").pack(fill="x", padx=30)
+        ctk.CTkButton(sidebar, text=config.t("btn_start"), command=self.go, height=50, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color="black", font=("Segoe UI", 14, "bold")).pack(fill="x", padx=30, pady=10)
+        ctk.CTkButton(sidebar, text=config.t("btn_back"), command=lambda: controller.switch_frame(MenuFrame), height=40, fg_color="transparent", border_width=1, border_color=COLOR_BORDER, text_color="#aaa", hover_color="#220033").pack(fill="x", padx=30)
 
-        # --- PANEL DE MÓDULOS (DERECHA) ---
+        # --- INFORMACIÓN DE VENCIMIENTO CORREGIDA ---
+        if config.USER_EXPIRY and str(config.USER_EXPIRY).lower() != "none":
+            expiry_text = str(config.USER_EXPIRY).upper()
+        else:
+            expiry_text = "LIFETIME / INDEFINIDO"
+
+        info_box = ctk.CTkFrame(sidebar, fg_color="transparent")
+        info_box.pack(fill="x", padx=30, pady=(20, 0))
+        
+        ctk.CTkLabel(info_box, text=config.t("lbl_expiry"), font=("Segoe UI", 10, "bold"), text_color="#888").pack()
+        ctk.CTkLabel(info_box, text=expiry_text, font=("Consolas", 12, "bold"), text_color=COLOR_SUCCESS).pack()
+
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.grid(row=0, column=1, sticky="nsew", padx=30, pady=30)
         
-        # Cabecera
         head_mod = ctk.CTkFrame(main, fg_color="transparent")
         head_mod.pack(fill="x", pady=(10, 10))
-        ctk.CTkLabel(head_mod, text="DETECTION MODULES", font=("Segoe UI", 18, "bold"), text_color="#fff").pack(side="left")
-        
-        ctk.CTkButton(head_mod, text="All", command=lambda: self.toggle(True), width=60, height=25, fg_color="#333", hover_color="#444").pack(side="right")
-        ctk.CTkButton(head_mod, text="None", command=lambda: self.toggle(False), width=60, height=25, fg_color="#222", hover_color="#333").pack(side="right", padx=10)
+        ctk.CTkLabel(head_mod, text=config.t("lbl_modules"), font=("Segoe UI", 18, "bold"), text_color="#fff").pack(side="left")
+        ctk.CTkButton(head_mod, text=config.t("btn_all"), command=lambda: self.toggle(True), width=60, height=25, fg_color="#333").pack(side="right")
+        ctk.CTkButton(head_mod, text=config.t("btn_none"), command=lambda: self.toggle(False), width=60, height=25, fg_color="#222").pack(side="right", padx=10)
 
-        # Lista Scrollable
         scroll = ctk.CTkScrollableFrame(main, fg_color="transparent")
         scroll.pack(fill="both", expand=True)
         scroll.grid_columnconfigure((0,1), weight=1)
 
-        # --- LISTA COMPLETA Y ORDENADA (F1 - F26) ---
         modules = [
-            ("F1: ShimCache Analysis", 'f1'),
-            ("F2: AppCompat Traces", 'f2'),
-            ("F3: Original Name Check", 'f3'),
-            ("F4: Digital Signatures", 'f4'),
-            ("F5: Disk Content Search", 'f5'),  # Restringido a Lista
-            ("F6: Hidden Files", 'f6'),
-            ("F7: MFT & ADS Analysis", 'f7'),
-            ("F8: UserAssist History", 'f8'),
-            ("F9: USB Device History", 'f9'),
-            ("F10: DNS Cache", 'f10'),
-            ("F11: Browser Forensics", 'f11'),
-            ("F12: System Persistence", 'f12'),
-            ("F13: Windows Event Logs", 'f13'),
-            ("F14: Process Hunter", 'f14'),
-            ("F15: Game Cheat Hunter", 'f15'),
-            ("F16: Nuclear Traces", 'f16'),
-            ("F17: Kernel Hunter", 'f17'),
-            ("F18: DNA & Prefetch", 'f18'),
-            ("F19: Network Connections", 'f19'),
-            ("F20: Toxic LNK Files", 'f20'),
-            ("F21: Ghost Trails", 'f21'),
-            ("F22: Memory Anomaly", 'f22'),
-            ("F23: Rogue Drivers", 'f23'),
-            ("F24: Deep Static Analysis", 'f24'),
-            ("F25: Metamorphosis Hunter", 'f25'),
-            ("F26: String Cleaning", 'f26'),
-            ("VT: VirusTotal Cloud", 'vt')
+            (config.t("f1"), 'f1'), (config.t("f2"), 'f2'), (config.t("f3"), 'f3'),
+            (config.t("f4"), 'f4'), (config.t("f5"), 'f5'), (config.t("f6"), 'f6'),
+            (config.t("f7"), 'f7'), (config.t("f8"), 'f8'), (config.t("f9"), 'f9'),
+            (config.t("f10"), 'f10'), (config.t("f11"), 'f11'), (config.t("f12"), 'f12'),
+            (config.t("f13"), 'f13'), (config.t("f14"), 'f14'), (config.t("f15"), 'f15'),
+            (config.t("f16"), 'f16'), (config.t("f17"), 'f17'), (config.t("f18"), 'f18'),
+            (config.t("f19"), 'f19'), (config.t("f20"), 'f20'), (config.t("f21"), 'f21'),
+            (config.t("f22"), 'f22'), (config.t("f23"), 'f23'), (config.t("f24"), 'f24'),
+            (config.t("f25"), 'f25'), (config.t("f26"), 'f26'), (config.t("vt"), 'vt')
         ]
         
-        # Permisos (Full incluye todo)
-        perms = {
-            'Basic': ['f1','f2','f3','f5','f7','f8','f9','f18','f20'], 
-            'Medium': ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12','f18','f20','vt'], 
-            'Full': [m[1] for m in modules]
-        }
+        perms = {'Basic': ['f1','f2','f3','f5','f7','f8','f9','f18','f20'], 
+                 'Medium': ['f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12','f18','f20','vt'], 
+                 'Full': [m[1] for m in modules]}
         self.alwd = perms.get(config.USER_MEMBERSHIP, [])
 
-        # Renderizar
         r, c = 0, 0
         for text, key in modules:
             self.create_module_card(scroll, text, key, r, c)
@@ -649,10 +556,10 @@ class UserConfigFrame(ctk.CTkFrame):
         if val: e.insert(0, val)
         if cmd: ctk.CTkButton(f, text="...", width=35, command=cmd, fg_color="#222", hover_color="#333").pack(side="right", padx=(5, 0))
         
-        if title == "OUTPUT PATH": self.pv = e
-        elif title == "FOLDER NAME": self.fv = e
-        elif title == "KEYWORD LIST": self.lv = e
-        elif title.startswith("TARGET"): self.tv = e
+        if title == config.t("lbl_path"): self.pv = e
+        elif title == config.t("lbl_folder"): self.fv = e
+        elif title == config.t("lbl_list"): self.lv = e
+        elif title.startswith(config.t("lbl_target").split()[0]): self.tv = e
 
     def create_module_card(self, parent, text, key, r, c):
         active = key in self.alwd
@@ -666,40 +573,33 @@ class UserConfigFrame(ctk.CTkFrame):
         sw = ctk.CTkSwitch(card, text=text, variable=var, state=state, progress_color=COLOR_ACCENT, font=("Segoe UI", 12))
         sw.pack(side="left", padx=15, pady=15)
         
-        # Configuración del Dropdown
-        mode = tk.StringVar(value="Usar Lista")
+        mode = tk.StringVar(value=config.t("opt_list"))
         
         if active and key != 'vt':
-            # FASE 5 (F5) = SOLO USAR LISTA
             if key == 'f5':
-                ctk.CTkOptionMenu(card, variable=mode, values=["Usar Lista"], width=110, height=24, fg_color="#222", button_color="#333", state="disabled").pack(side="right", padx=15)
+                ctk.CTkOptionMenu(card, variable=mode, values=[config.t("opt_list")], width=110, height=24, fg_color="#222", button_color="#333", state="disabled").pack(side="right", padx=15)
             else:
-                ctk.CTkOptionMenu(card, variable=mode, values=["Usar Lista", "Analizar Todo"], width=110, height=24, fg_color="#222", button_color="#333").pack(side="right", padx=15)
+                ctk.CTkOptionMenu(card, variable=mode, values=[config.t("opt_list"), config.t("opt_all")], width=110, height=24, fg_color="#222", button_color="#333").pack(side="right", padx=15)
         
         self.ui_map[key] = {'active': var, 'modo': mode}
 
     def select_path(self):
         p = filedialog.askdirectory()
         if p: self.pv.delete(0, tk.END); self.pv.insert(0, p)
-    
     def select_list(self):
         f = filedialog.askopenfilename(filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         if f: self.lv.delete(0, tk.END); self.lv.insert(0, f)
-    
     def select_target(self):
         f = filedialog.askopenfilename()
         if f: self.tv.delete(0, tk.END); self.tv.insert(0, f)
-
     def toggle(self, val):
         for k, v in self.ui_map.items():
             if k in self.alwd: v['active'].set(val)
-
     def go(self):
         config.HISTORIAL_RUTAS['path'] = self.pv.get()
         config.HISTORIAL_RUTAS['folder'] = self.fv.get()
         config.HISTORIAL_RUTAS['list_path'] = self.lv.get()
         config.HISTORIAL_RUTAS['target_file'] = self.tv.get()
-        
         sel = {k: {'active': v['active'].get(), 'modo': v['modo'].get()} for k, v in self.ui_map.items()}
         pals = utils.cargar_palabras(config.HISTORIAL_RUTAS['list_path'])
         self.controller.switch_frame(ScannerFrame, pals, sel, config.HISTORIAL_RUTAS)
@@ -718,17 +618,16 @@ class ScannerFrame(ctk.CTkFrame):
         box = ctk.CTkFrame(self, fg_color="#0a0010", corner_radius=20, border_color=COLOR_BORDER, border_width=1)
         box.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.6, relheight=0.5)
         
-        ctk.CTkLabel(box, text="SCAN IN PROGRESS", font=("Segoe UI", 32, "bold"), text_color="white").pack(pady=(50, 10))
+        ctk.CTkLabel(box, text=config.t("scan_title"), font=("Segoe UI", 32, "bold"), text_color="white").pack(pady=(50, 10))
         
         self.pb = ctk.CTkProgressBar(box, width=450, height=8, progress_color=COLOR_SUCCESS, border_color="#222")
         self.pb.pack(pady=20)
-        self.pb.configure(mode="indeterminate")
-        self.pb.start()
+        self.pb.configure(mode="indeterminate"); self.pb.start()
         
-        self.lbl_status = ctk.CTkLabel(box, text="Initializing Neural Engine...", font=("Consolas", 14), text_color="#888")
+        self.lbl_status = ctk.CTkLabel(box, text=config.t("scan_init"), font=("Consolas", 14), text_color="#888")
         self.lbl_status.pack(pady=10)
         
-        ctk.CTkButton(box, text="ABORT OPERATION", command=self.stop, fg_color=COLOR_DANGER, hover_color="#990000", height=45, width=200).pack(pady=40)
+        ctk.CTkButton(box, text=config.t("btn_abort"), command=self.stop, fg_color=COLOR_DANGER, hover_color="#990000", height=45, width=200).pack(pady=40)
         
         self.cola_estado = Queue()
         threading.Thread(target=self.run_scan, daemon=True).start()
@@ -737,14 +636,13 @@ class ScannerFrame(ctk.CTkFrame):
     def cleanup(self): self.anim.detener()
     def stop(self): config.CANCELAR_ESCANEO = True
     def update_status(self, msg): self.cola_estado.put(msg)
-    
     def check_queue(self):
         try:
             while not self.cola_estado.empty():
                 msg = self.cola_estado.get_nowait()
                 if msg == "DONE": 
                     self.anim.detener()
-                    messagebox.showinfo("Done", f"Report saved in: {self.fp}")
+                    messagebox.showinfo(config.t("scan_done_title"), f"{config.t('scan_done_msg')}\n{self.fp}")
                     self.controller.switch_frame(MenuFrame)
                 else: self.lbl_status.configure(text=msg)
         except: pass
@@ -752,27 +650,26 @@ class ScannerFrame(ctk.CTkFrame):
         else: self.controller.switch_frame(MenuFrame)
 
     def run_scan(self):
-        bd = self.rutas.get('path', os.path.abspath("."))
-        fn = self.rutas.get('folder', "Resultados_SS")
+        bd = self.rutas.get('path', os.path.abspath(".")); fn = self.rutas.get('folder', "Resultados_SS")
         fp = os.path.join(bd, fn)
         if not os.path.exists(fp): os.makedirs(fp, exist_ok=True)
         self.fp = fp
         
-        # Mapeo de archivos de reporte básicos (se pueden expandir en config.py)
+        config.reporte_game = os.path.join(fp, "Game_Cheat_Hunter.txt")
+        config.reporte_usb = os.path.join(fp, "USB_History.txt")
+        config.reporte_shim = os.path.join(fp, "ShimCache.txt")
+        config.reporte_dna = os.path.join(fp, "DNA_Prefetch.txt")
         config.reporte_vt = os.path.join(fp, "VirusTotal.txt")
+        config.reporte_nuclear = os.path.join(fp, "Nuclear_Traces.txt")
         
-        # Generar HTML base
         try: scanner_engine.generar_reporte_html(fp, self.config)
         except: pass
         
-        # Iniciar VirusTotal en paralelo si está activo
         vte = self.config.get('vt', {}).get('active', False)
         if vte:
              with open(config.reporte_vt, "w", encoding="utf-8") as f: f.write(f"=== VT: {datetime.datetime.now()} ===\n\n")
              threading.Thread(target=scanner_engine.worker_virustotal, daemon=True).start()
 
-        # LISTA DE FASES MAPADA A LAS FUNCIONES DEL MOTOR
-        # Asegúrate de que scanner_engine.py tenga estas funciones definidas
         fases = [
             ('f1', scanner_engine.fase_shimcache),
             ('f2', scanner_engine.fase_rastro_appcompat),
@@ -802,44 +699,37 @@ class ScannerFrame(ctk.CTkFrame):
             ('f26', scanner_engine.fase_string_cleaning)
         ]
         
+        # Inicializar contexto
+        context = scanner_engine.ScannerContext()
+        self.update_status("Taking System Snapshot...")
+        context.prepare()
+
         for k, func in fases:
             if config.CANCELAR_ESCANEO: break
             
-            # Verificar si la fase está activa en la configuración
             conf_fase = self.config.get(k, {})
             if conf_fase.get('active'):
                 self.update_status(f"Running Module: {k.upper()}...")
-                
-                modo = conf_fase.get('modo', "Usar Lista")
+                modo = conf_fase.get('modo', config.t("opt_list"))
                 
                 try: 
-                    # Argumentos dinámicos según la fase
+                    # Lógica de argumentos dinámica
                     args = []
                     
-                    # Fases que requieren lista de palabras
-                    if k in ['f1','f2','f3','f5','f6','f7','f8','f9','f10','f11','f12','f14','f15','f16','f18','f19','f20','f21','f26']:
-                        args = [self.controller.frames[UserConfigFrame].rutas['list_path']] 
-                        # Nota: Si tu scanner_engine espera la lista cargada, usa 'self.palabras'. 
-                        # Si espera la ruta, usa la ruta. Ajustaré a 'self.palabras' que es lo estándar.
-                        args = [self.palabras, modo]
+                    # Fases que usan contexto
+                    if k in ['f3', 'f5', 'f6', 'f14', 'f15', 'f25']:
+                        if k == 'f3' or k == 'f4': args = [context, self.palabras, vte, modo]
+                        elif k == 'f25': args = [context, self.palabras, modo, self.rutas.get('target_file')]
+                        else: args = [context, self.palabras, modo]
+                    else:
+                        # Fases legacy (sin contexto)
+                        if k in ['f1','f2','f7','f8','f9','f10','f11','f12','f13','f16','f17','f18','f19','f20','f21','f22','f23','f24','f26']:
+                             args = [self.palabras, modo]
 
-                    # F3 y F4 a veces requieren flag VT
-                    if k == 'f3' or k == 'f4': 
-                        args = [self.palabras, vte, modo]
-                    
-                    # F25 requiere archivo objetivo
-                    if k == 'f25': 
-                        args = [self.palabras, modo, self.rutas.get('target_file')]
-
-                    # Ejecutar función
                     func(*args)
-                    
-                except Exception as e: 
-                    print(f"Error en fase {k}: {e}")
-                
-                time.sleep(0.2) # Pequeña pausa para estabilidad visual
+                except Exception as e: print(f"Error {k}: {e}")
+                time.sleep(0.1)
 
-        # Finalizar VT
         scanner_engine.cola_vt.put(None)
         if vte:
             self.update_status("Finalizing Cloud Analysis...")
