@@ -20,7 +20,7 @@ import scanner_engine
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")
 
-# Colores (Seguros)
+# Colores (Seguros, cargados desde config si existen)
 COLOR_BG = getattr(config, 'COLOR_BG', "#020005")
 COLOR_PANEL = getattr(config, 'COLOR_CARD', "#12001F")
 COLOR_ACCENT = getattr(config, 'COLOR_ACCENT', "#D500F9")
@@ -154,7 +154,6 @@ class VentanaRegistro(ctk.CTkToplevel):
 
         self.anim = CyberRain(self, COLOR_ACCENT)
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
-        # CORREGIDO: Eliminado self.anim.lower()
 
         ctk.CTkLabel(self, text="[ NEW AGENT REGISTRATION ]", font=("Segoe UI", 18, "bold"), text_color=COLOR_SUCCESS).pack(pady=(40, 20))
         
@@ -194,7 +193,6 @@ class AdminFrame(ctk.CTkFrame):
         
         self.anim = CyberRain(self, COLOR_DANGER) 
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
-        # CORREGIDO: Eliminado self.anim.lower()
 
         ctk.CTkLabel(self, text=config.t("adm_title"), font=("Segoe UI", 24, "bold"), text_color="white").pack(pady=30)
         
@@ -379,7 +377,6 @@ class LoginFrame(ctk.CTkFrame):
         
         self.anim = CyberRain(self, config.COLOR_USER if hasattr(config, 'COLOR_USER') else COLOR_ACCENT)
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
-        # CORREGIDO: Eliminado self.anim.lower()
         
         card = ctk.CTkFrame(self, fg_color="#0a0010", corner_radius=25, border_width=2, border_color=COLOR_BORDER, width=450, height=550)
         card.place(relx=0.5, rely=0.5, anchor="center")
@@ -453,7 +450,6 @@ class MenuFrame(ctk.CTkFrame):
         
         self.anim = CyberRain(self, COLOR_ACCENT)
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
-        # CORREGIDO: Eliminado self.anim.lower()
 
         # 1. Cabecera con Logo
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -521,7 +517,6 @@ class SettingsFrame(ctk.CTkFrame):
         
         self.anim = CyberRain(self, "#888")
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
-        # CORREGIDO: Eliminado self.anim.lower()
 
         ctk.CTkLabel(self, text=config.t("set_title"), font=("Segoe UI", 24), text_color="white").pack(pady=50)
         
@@ -559,7 +554,6 @@ class UserConfigFrame(ctk.CTkFrame):
         
         self.anim = CyberRain(self, COLOR_ACCENT)
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
-        # CORREGIDO: Eliminado self.anim.lower()
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -569,9 +563,9 @@ class UserConfigFrame(ctk.CTkFrame):
         
         ctk.CTkLabel(sidebar, text=config.t("cfg_title"), font=("Segoe UI", 20, "bold"), text_color="white").pack(pady=(40, 30), padx=30, anchor="w")
         
-        self.create_input(sidebar, config.t("lbl_path"), self.rutas['path'], self.select_path)
-        self.create_input(sidebar, config.t("lbl_folder"), self.rutas['folder'], None)
-        self.create_input(sidebar, config.t("lbl_list"), self.rutas['list_path'], self.select_list)
+        self.create_input(sidebar, config.t("lbl_path"), self.rutas.get('path', ""), self.select_path)
+        self.create_input(sidebar, config.t("lbl_folder"), self.rutas.get('folder', ""), None)
+        self.create_input(sidebar, config.t("lbl_list"), self.rutas.get('list_path', ""), self.select_list)
         self.create_input(sidebar, config.t("lbl_target"), "", self.select_target)
         
         ctk.CTkFrame(sidebar, height=1, fg_color=COLOR_BORDER).pack(fill="x", padx=30, pady=30)
@@ -676,26 +670,29 @@ class UserConfigFrame(ctk.CTkFrame):
     def toggle(self, val):
         for k, v in self.ui_map.items():
             if k in self.alwd: v['active'].set(val)
+            
     def go(self):
         config.HISTORIAL_RUTAS['path'] = self.pv.get()
         config.HISTORIAL_RUTAS['folder'] = self.fv.get()
         config.HISTORIAL_RUTAS['list_path'] = self.lv.get()
         config.HISTORIAL_RUTAS['target_file'] = self.tv.get()
+        
         sel = {k: {'active': v['active'].get(), 'modo': v['modo'].get()} for k, v in self.ui_map.items()}
         pals = utils.cargar_palabras(config.HISTORIAL_RUTAS['list_path'])
+        
         self.controller.switch_frame(ScannerFrame, pals, sel, config.HISTORIAL_RUTAS)
 
 class ScannerFrame(ctk.CTkFrame):
     def __init__(self, parent, controller, palabras, configuracion, rutas):
         super().__init__(parent, fg_color=COLOR_BG)
         self.controller = controller
+        self.palabras = palabras
         self.config = configuracion
         self.rutas = rutas
         config.CANCELAR_ESCANEO = False
         
         self.anim = CyberRain(self, COLOR_SUCCESS)
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
-        # CORREGIDO: Eliminado self.anim.lower()
         
         box = ctk.CTkFrame(self, fg_color="#0a0010", corner_radius=20, border_color=COLOR_BORDER, border_width=1)
         box.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.6, relheight=0.5)
@@ -712,12 +709,14 @@ class ScannerFrame(ctk.CTkFrame):
         ctk.CTkButton(box, text=config.t("btn_abort"), command=self.stop, fg_color=COLOR_DANGER, hover_color="#990000", height=45, width=200).pack(pady=40)
         
         self.cola_estado = Queue()
+        # CORREGIDO: Se lanza el hilo sin argumentos porque run_scan usa self.*
         threading.Thread(target=self.run_scan, daemon=True).start()
         self.check_queue()
 
     def cleanup(self): self.anim.detener()
     def stop(self): config.CANCELAR_ESCANEO = True
     def update_status(self, msg): self.cola_estado.put(msg)
+    
     def check_queue(self):
         try:
             while not self.cola_estado.empty():
@@ -732,95 +731,143 @@ class ScannerFrame(ctk.CTkFrame):
         else: self.controller.switch_frame(MenuFrame)
 
     def run_scan(self):
-        bd = self.rutas.get('path', os.path.abspath(".")); fn = self.rutas.get('folder', "Resultados_SS")
-        fp = os.path.join(bd, fn)
-        if not os.path.exists(fp): os.makedirs(fp, exist_ok=True)
-        self.fp = fp
+        """
+        Ejecuta el escaneo en un hilo separado.
+        Reemplaza la función antigua para manejar los argumentos correctamente.
+        """
+        # 1. Configurar Rutas
+        bd = self.rutas.get('path', os.path.abspath("."))
+        fn = self.rutas.get('folder', f"Resultados_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        self.fp = os.path.join(bd, fn)
         
-        config.reporte_game = os.path.join(fp, "Game_Cheat_Hunter.txt")
-        config.reporte_usb = os.path.join(fp, "USB_History.txt")
-        config.reporte_shim = os.path.join(fp, "ShimCache.txt")
-        config.reporte_dna = os.path.join(fp, "DNA_Prefetch.txt")
-        config.reporte_vt = os.path.join(fp, "VirusTotal.txt")
-        config.reporte_nuclear = os.path.join(fp, "Nuclear_Traces.txt")
+        if not os.path.exists(self.fp):
+            try: os.makedirs(self.fp, exist_ok=True)
+            except: pass
         
-        try: scanner_engine.generar_reporte_html(fp, self.config)
+        # Actualizar config global con rutas de reportes
+        config.HISTORIAL_RUTAS = {'path': bd, 'folder': fn}
+        config.reporte_game = os.path.join(self.fp, "Game_Cheat_Hunter.txt")
+        config.reporte_usb = os.path.join(self.fp, "USB_History.txt")
+        config.reporte_shim = os.path.join(self.fp, "ShimCache.txt")
+        config.reporte_dna = os.path.join(self.fp, "DNA_Prefetch.txt")
+        config.reporte_vt = os.path.join(self.fp, "VirusTotal.txt")
+        config.reporte_nuclear = os.path.join(self.fp, "Nuclear_Traces.txt")
+        config.reporte_appcompat = os.path.join(self.fp, "rastro_appcompat.txt")
+        config.reporte_sospechosos = os.path.join(self.fp, "cambios_sospechosos.txt")
+        config.reporte_firmas = os.path.join(self.fp, "Digital_Signatures.txt")
+        config.reporte_path = os.path.join(self.fp, "buscar_en_disco.txt")
+        config.reporte_ocultos = os.path.join(self.fp, "archivos_ocultos.txt")
+        config.reporte_mft = os.path.join(self.fp, "MFT_Archivos.txt")
+        config.reporte_userassist = os.path.join(self.fp, "UserAssist_Decoded.txt")
+        config.reporte_dns = os.path.join(self.fp, "DNS_Cache.txt")
+        config.reporte_browser = os.path.join(self.fp, "Browser_Forensics.txt")
+        config.reporte_persistencia = os.path.join(self.fp, "Persistence_Check.txt")
+        config.reporte_eventos = os.path.join(self.fp, "Windows_Events.txt")
+        config.reporte_process = os.path.join(self.fp, "Process_Hunter.txt")
+        config.reporte_kernel = os.path.join(self.fp, "Kernel_Anomalies.txt")
+        config.reporte_network = os.path.join(self.fp, "Network_Anomalies.txt")
+        config.reporte_toxic = os.path.join(self.fp, "Toxic_LNK.txt")
+        config.reporte_ghost = os.path.join(self.fp, "Ghost_Trails.txt")
+        config.reporte_memory = os.path.join(self.fp, "Memory_Injection_Report.txt")
+        config.reporte_drivers = os.path.join(self.fp, "Rogue_Drivers.txt")
+        config.reporte_static = os.path.join(self.fp, "Deep_Static_Analysis.txt")
+        config.reporte_morph = os.path.join(self.fp, "Metamorphosis_Report.txt")
+        config.reporte_cleaning = os.path.join(self.fp, "String_Cleaner_Detection.txt")
+        
+        # 2. Inicializar Dashboard HTML
+        try: scanner_engine.generar_reporte_html(self.fp, self.config)
         except: pass
         
-        vte = self.config.get('vt', {}).get('active', False)
-        if vte:
-             with open(config.reporte_vt, "w", encoding="utf-8") as f: f.write(f"=== VT: {datetime.datetime.now()} ===\n\n")
-             threading.Thread(target=scanner_engine.worker_virustotal, daemon=True).start()
+        # 3. Iniciar VirusTotal (Si está activo)
+        vte = False
+        if 'vt' in self.config and self.config['vt'].get('active'):
+            vte = True
+            with open(config.reporte_vt, "w", encoding="utf-8") as f:
+                f.write(f"=== VT: {datetime.datetime.now()} ===\n\n")
+            threading.Thread(target=scanner_engine.worker_virustotal, daemon=True).start()
 
-        fases = [
-            ('f1', scanner_engine.fase_shimcache),
-            ('f2', scanner_engine.fase_rastro_appcompat),
-            ('f3', scanner_engine.fase_nombre_original),
-            ('f4', scanner_engine.fase_verificar_firmas),
-            ('f5', scanner_engine.fase_buscar_en_disco),
-            ('f6', scanner_engine.fase_archivos_ocultos),
-            ('f7', scanner_engine.fase_mft_ads),
-            ('f8', scanner_engine.fase_userassist),
-            ('f9', scanner_engine.fase_usb_history),
-            ('f10', scanner_engine.fase_dns_cache),
-            ('f11', scanner_engine.fase_browser_forensics),
-            ('f12', scanner_engine.fase_persistence),
-            ('f13', scanner_engine.fase_event_logs),
-            ('f14', scanner_engine.fase_process_hunter),
-            ('f15', scanner_engine.fase_game_cheat_hunter),
-            ('f16', scanner_engine.fase_nuclear_traces),
-            ('f17', scanner_engine.fase_kernel_hunter),
-            ('f18', scanner_engine.fase_dna_prefetch),
-            ('f19', scanner_engine.fase_network_hunter),
-            ('f20', scanner_engine.fase_toxic_lnk),
-            ('f21', scanner_engine.fase_ghost_trails),
-            ('f22', scanner_engine.fase_memory_anomaly),
-            ('f23', scanner_engine.fase_rogue_drivers),
-            ('f24', scanner_engine.fase_deep_static),
-            ('f25', scanner_engine.fase_metamorphosis_hunter),
-            ('f26', scanner_engine.fase_string_cleaning)
-        ]
-        
-        # Inicializar contexto
-        context = scanner_engine.ScannerContext()
+        # 4. Inicializar Contexto (Snapshot)
         self.update_status("Taking System Snapshot...")
-        context.prepare()
+        try:
+            context = scanner_engine.ScannerContext()
+            context.prepare(self.update_status)
+        except:
+            # Fallback
+            context = type('obj', (object,), {'file_snapshot': [], 'process_snapshot': []})
 
-        for k, func in fases:
+        # 5. Definir Fases
+        # (ID, Función, usa_contexto?)
+        # La tupla es (id, func, flag_context)
+        fases_map = [
+            ('f1', scanner_engine.fase_shimcache, False),
+            ('f2', scanner_engine.fase_rastro_appcompat, False),
+            ('f3', scanner_engine.fase_nombre_original, True),
+            ('f4', scanner_engine.fase_verificar_firmas, True),
+            ('f5', scanner_engine.fase_buscar_en_disco, True),
+            ('f6', scanner_engine.fase_archivos_ocultos, True),
+            ('f7', scanner_engine.fase_mft_ads, False),
+            ('f8', scanner_engine.fase_userassist, False),
+            ('f9', scanner_engine.fase_usb_history, False),
+            ('f10', scanner_engine.fase_dns_cache, False),
+            ('f11', scanner_engine.fase_browser_forensics, False),
+            ('f12', scanner_engine.fase_persistence, False),
+            ('f13', scanner_engine.fase_event_logs, False),
+            ('f14', scanner_engine.fase_process_hunter, True),
+            ('f15', scanner_engine.fase_game_cheat_hunter, True),
+            ('f16', scanner_engine.fase_nuclear_traces, False),
+            ('f17', scanner_engine.fase_kernel_hunter, False),
+            ('f18', scanner_engine.fase_dna_prefetch, False),
+            ('f19', scanner_engine.fase_network_hunter, False),
+            ('f20', scanner_engine.fase_toxic_lnk, False),
+            ('f21', scanner_engine.fase_ghost_trails, False),
+            ('f22', scanner_engine.fase_memory_anomaly, False),
+            ('f23', scanner_engine.fase_rogue_drivers, False),
+            ('f24', scanner_engine.fase_deep_static, False),
+            ('f25', scanner_engine.fase_metamorphosis_hunter, True),
+            ('f26', scanner_engine.fase_string_cleaning, False)
+        ]
+
+        total = len(fases_map)
+
+        # 6. Ejecutar Bucle
+        for i, (k, func, use_ctx) in enumerate(fases_map):
             if config.CANCELAR_ESCANEO: break
             
+            # Verificar si la fase está activa en la configuración
             conf_fase = self.config.get(k, {})
             if conf_fase.get('active'):
-                self.update_status(f"Running Module: {k.upper()}...")
-                modo = conf_fase.get('modo', config.t("opt_list"))
-                
-                try: 
-                    # Lógica de argumentos dinámica
-                    args = []
+                try:
+                    # Determinar modo para esta fase específica
+                    modo_fase = conf_fase.get('modo', config.t("opt_list"))
+                    desc = k.upper() # O podrías mapear nombres
+                    self.update_status(f"Running Module: {desc}...")
                     
-                    # Fases que usan contexto
-                    if k in ['f3', 'f5', 'f6', 'f14', 'f15', 'f25']:
-                        if k == 'f3' or k == 'f4': args = [context, self.palabras, vte, modo]
-                        elif k == 'f25': args = [context, self.palabras, modo, self.rutas.get('target_file')]
-                        else: args = [context, self.palabras, modo]
-                    else:
-                        # Fases legacy (sin contexto)
-                        if k in ['f1','f2','f7','f8','f9','f10','f11','f12','f13','f16','f17','f18','f19','f20','f21','f22','f23','f24','f26']:
-                             args = [self.palabras, modo]
+                    # Construir argumentos
+                    if k == 'f25': # Metamorphosis necesita target_file
+                        target = self.rutas.get('target_file')
+                        func(context, self.palabras, modo_fase, target)
+                    elif k == 'f3' or k == 'f4': # Necesitan VT
+                        func(context, self.palabras, vte, modo_fase)
+                    elif use_ctx: # Necesita contexto
+                        func(context, self.palabras, modo_fase)
+                    else: # Legacy / Sin contexto
+                        func(self.palabras, modo_fase)
+                        
+                except Exception as e:
+                    print(f"Error executing {k}: {e}")
+            
+            time.sleep(0.05) # Pequeña pausa para UI
 
-                    func(*args)
-                except Exception as e: print(f"Error {k}: {e}")
-                time.sleep(0.1)
-
+        # 7. Finalización
         scanner_engine.cola_vt.put(None)
         if vte:
             self.update_status("Finalizing Cloud Analysis...")
             scanner_engine.cola_vt.join()
 
         if not config.CANCELAR_ESCANEO: 
-             try: scanner_engine.generar_reporte_global_cheats(fp)
-             except: pass
-             self.cola_estado.put("DONE")
+            try: scanner_engine.generar_reporte_global_cheats(self.fp)
+            except: pass
+            self.update_status("DONE")
 
 class ScannelerApp(ctk.CTk):
     def __init__(self):
@@ -862,3 +909,7 @@ class ScannelerApp(ctk.CTk):
         config.CANCELAR_ESCANEO = True
         self.destroy()
         sys.exit()
+
+if __name__ == "__main__":
+    app = ScannelerApp()
+    app.mainloop()

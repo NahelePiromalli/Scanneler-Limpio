@@ -51,6 +51,208 @@ def worker_virustotal():
                         f.flush()
         except: pass
         cola_vt.task_done()
+        
+# =============================================================================
+# HELPER: ASEGURAR RUTAS ABSOLUTAS (COPIA ESTO AL INICIO)
+# =============================================================================
+def asegurar_ruta_reporte(nombre_archivo):
+    """
+    Calcula la ruta absoluta basada en la configuración de la GUI.
+    Garantiza que todos los módulos guarden los TXT en la carpeta de resultados.
+    """
+    try:
+        # Obtener ruta base desde la configuración global
+        base = config.HISTORIAL_RUTAS.get('path', os.getcwd())
+        folder = config.HISTORIAL_RUTAS.get('folder', 'Resultados_General')
+        full_dir = os.path.join(base, folder)
+        
+        # Crear la carpeta si no existe
+        if not os.path.exists(full_dir):
+            os.makedirs(full_dir, exist_ok=True)
+            
+        return os.path.join(full_dir, nombre_archivo)
+    except:
+        # Fallback en caso de error extremo
+        return os.path.abspath(nombre_archivo)
+        
+# =============================================================================
+# GENERADOR DE REPORTES HTML (Dashboard en tiempo real)
+# =============================================================================
+def generar_reporte_html(out_f, cfg=None):
+    """
+    Genera el Dashboard HTML.
+    CORRECCIÓN: Ahora detecta automáticamente si el archivo .txt existe para mostrarlo,
+    independientemente de la configuración parcial que reciba.
+    """
+    # Si no se pasa una ruta de salida, intentar deducirla de la configuración global
+    if not out_f:
+        try:
+            out_f = os.path.join(config.HISTORIAL_RUTAS['path'], config.HISTORIAL_RUTAS['folder'])
+        except:
+            out_f = os.getcwd()
+
+    if not os.path.exists(out_f):
+        try: os.makedirs(out_f)
+        except: return
+
+    css = """<style>
+        body{background-color:#090011;color:#f3e5f5;font-family:'Consolas',monospace;padding:20px}
+        h1,h2{color:#d500f9;text-align:center;text-transform:uppercase;letter-spacing:2px;text-shadow:0 0 10px #d500f9}
+        .card{border:1px solid #4a148c;background:#1a0526;margin:10px;padding:15px;border-left:5px solid #d500f9;box-shadow:0 0 10px rgba(74,20,140,0.4);transition:transform 0.2s; width: 280px; display:inline-block; vertical-align:top;}
+        .card:hover{transform:scale(1.02);box-shadow:0 0 20px rgba(213,0,249,0.6)}
+        .status-danger{border-left-color: #ff1744 !important; box-shadow: 0 0 10px rgba(255, 23, 68, 0.4);}
+        .status-clean{border-left-color: #00e676 !important;}
+        .status-pending{border-left-color: #757575 !important; opacity: 0.7;}
+        pre{white-space:pre-wrap;word-wrap:break-word;background:#0f0018;padding:15px;border:1px solid #6a1b9a;color:#e1bee7;font-size:0.8em; max-height: 60vh; overflow-y: auto;}
+        .back-btn{display:inline-block;margin-bottom:20px;padding:10px 20px;border:1px solid #d500f9;color:#d500f9;border-radius:50px}
+        .back-btn:hover{background:#d500f9;color:#090011}
+        .footer{text-align:center;margin-top:50px;color:#7b1fa2;font-size:0.8em; clear:both;}
+        .timestamp{color:#9c27b0;font-size:0.9em;text-align:center;margin-bottom:30px}
+        .badge {padding: 2px 8px; border-radius: 4px; font-size: 0.8em; color: black; font-weight: bold;}
+        .b-danger {background: #ff1744; color: white;}
+        .b-clean {background: #00e676;}
+        .b-pending {background: #757575; color: white;}
+    </style>"""
+
+    fmap = {
+        'f1':("ShimCache","Shimcache_Rastros.txt"), 'f2':("AppCompat","rastro_appcompat.txt"), 
+        'f3':("Identity","cambios_sospechosos.txt"), 'f4':("Signatures","Digital_Signatures_ZeroTrust.txt"), 
+        'f5':("Keywords","buscar_en_disco.txt"), 'f6':("Hidden","archivos_ocultos.txt"), 
+        'f7':("MFT_ADS","MFT_Archivos.txt"), 'f8':("UserAssist","UserAssist_Decoded.txt"), 
+        'f9':("USB","USB_History.txt"), 'f10':("DNS","DNS_Cache.txt"), 
+        'f11':("Browser","Browser_Forensics.txt"), 'f12':("Persistence","Persistence_Check.txt"), 
+        'f13':("Events","Windows_Events.txt"), 'f14':("ProcessHunter","Process_Hunter.txt"), 
+        'f15':("GameCheats","Game_Cheat_Hunter.txt"), 'f16':("NuclearTraces","Nuclear_Traces.txt"), 
+        'f17':("KernelHunter","Kernel_Anomalies.txt"), 'f18':("DNA_Prefetch","DNA_Prefetch.txt"), 
+        'f19':("NetworkHunter","Network_Anomalies.txt"), 'f20':("ToxicLNK","Toxic_LNK.txt"), 
+        'f21':("GhostTrails","Ghost_Trails.txt"), 'f22':("MemoryScanner","Memory_Injection_Report.txt"), 
+        'f23':("RogueDrivers","Rogue_Drivers.txt"), 'f24':("DeepStatic","Deep_Static_Analysis.txt"), 
+        'f25':("Metamorphosis","Metamorphosis_Report.txt"),'f26':("StringCleaner","String_Cleaner_Detection.txt"),
+        'vt':("VirusTotal","detecciones_virustotal.txt")
+    }
+
+    g_l = [] 
+    for k, (tit, arch) in fmap.items():
+        tp = os.path.join(out_f, arch)
+        file_exists = os.path.exists(tp)
+        
+        # Determinar si debemos mostrar esta tarjeta
+        # 1. Si el archivo existe (ya se escaneó)
+        # 2. O si está activado en la configuración actual (se va a escanear)
+        should_show = False
+        if file_exists:
+            should_show = True
+        elif cfg and k == 'vt':
+             if 'vt' in cfg and cfg['vt'].get('active'): should_show = True
+        elif cfg and k in cfg and cfg[k].get('active'):
+             should_show = True
+
+        if should_show:
+            hf = f"{k}_{arch.replace('.txt','.html')}"
+            hp = os.path.join(out_f, hf)
+            
+            c_h = ""; status = "PENDING"; card_class = "status-pending"; badge = "<span class='badge b-pending'>WAITING</span>"; meta_refresh = "<meta http-equiv='refresh' content='3'>"
+            
+            if file_exists:
+                try:
+                    with open(tp, "r", encoding="utf-8", errors="ignore") as f: raw_content = f.read()
+                    
+                    # Verificar si el archivo está vacío o solo tiene la cabecera
+                    if len(raw_content) > 10: 
+                        safe_content = html.escape(raw_content)
+                        safe_content = safe_content.replace("[!!!]", "<span style='color:#ff1744; background:#330000; padding:2px; font-weight:bold;'>[!!!]</span>")
+                        safe_content = safe_content.replace("[ALERTA]", "<span style='color:#ffea00; font-weight:bold;'>[ALERTA]</span>")
+                        c_h = f"<pre>{safe_content}</pre>"; meta_refresh = ""
+                        
+                        # Lógica de detección de amenazas
+                        if "[!!!]" in raw_content or "DETECTED" in raw_content or "THREAT" in raw_content or "MALICIOUS" in raw_content:
+                            status = "THREAT"; card_class = "status-danger"; badge = "<span class='badge b-danger'>THREAT FOUND</span>"
+                        else:
+                            status = "CLEAN"; card_class = "status-clean"; badge = "<span class='badge b-clean'>CLEAN</span>"
+                    else: 
+                        # Archivo creado pero vacío (aún escribiendo)
+                        c_h = "<p style='color:gray'>Initializing log...</p>"
+                except Exception as e: c_h = f"<p style='color:red'>Error reading log: {e}</p>"
+            else: 
+                c_h = "<p style='color:gray; animation: blink 1s infinite;'>Scanning in progress...</p><style>@keyframes blink{50%{opacity:0.5}}</style>"
+            
+            html_page = f"<!DOCTYPE html><html><head><title>{tit}</title>{css}{meta_refresh}</head><body><a href='index.html' class='back-btn'>&lt; DASHBOARD</a><h1>{tit} <small>{badge}</small></h1><div class='card' style='width: 95%; border-left: 5px solid {('#ff1744' if status=='THREAT' else '#d500f9')}'>{c_h}</div><div class='footer'>SCANNELER V80 | FORENSIC MODULE</div></body></html>"
+            
+            try:
+                with open(hp, "w", encoding="utf-8") as f: f.write(html_page)
+            except: pass
+            
+            g_l.append((tit, hf, card_class, badge))
+
+    # Generar Index siempre que haya algo que mostrar
+    if g_l:
+        dbh = f"<!DOCTYPE html><html><head><title>SCANNELER DASHBOARD</title>{css}<meta http-equiv='refresh' content='3'></head><body><h1>SCANNELER <span style='color:#d500f9'>|</span> LIVE MONITOR</h1><div class='timestamp'>SYSTEM TIME: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div><div style='display:flex;flex-wrap:wrap;justify-content:center;'>"
+        for tit, link, cls, bdg in g_l: 
+            dbh += f"<div class='card {cls}'><h3>{tit}</h3><div style='margin:10px 0;'>{bdg}</div><p><a href='{link}' style='display:block; background:#000; padding:5px; text-align:center;'>OPEN REPORT &gt;</a></p></div>"
+        dbh += "</div><div class='footer'>JELER33 PRIVATE TOOL | END OF LINE</div></body></html>"
+        try:
+            with open(os.path.join(out_f, "index.html"), "w", encoding="utf-8") as f: f.write(dbh)
+        except: pass
+
+
+# =============================================================================
+# CLASE DE CONTEXTO OPTIMIZADO (SNAPSHOT)
+# =============================================================================
+class ScannerContext:
+    def __init__(self):
+        self.file_snapshot = [] 
+        self.process_snapshot = []
+        self.is_ready = False
+
+    def prepare(self, status_callback=None):
+        if status_callback: status_callback("Indexing Processes in RAM...")
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'exe', 'cmdline', 'ppid']):
+                try: self.process_snapshot.append(proc.info)
+                except: pass
+        except: pass
+
+        if status_callback: status_callback("Indexing File System (Smart Scan)...")
+        user = os.environ.get("USERPROFILE", "C:\\")
+        hot_paths = [
+            os.path.join(user, "Downloads"),
+            os.path.join(user, "Desktop"),
+            os.path.join(user, "AppData", "Local", "Temp"),
+            os.path.join(user, "AppData", "Roaming")
+        ]
+        
+        IGNORED_FOLDERS = {
+            "node_modules", ".git", ".vs", "cache", "cachedata", "logs", 
+            "steamapps", "riot games", "epic games", "call of duty", "warzone",
+            "microsoft", "windows", "google", "brave-browser", "edge", "mozilla",
+            "nvidia", "amd", "intel", "common files", "program files", "servicing", "assembly"
+        }
+        
+        count = 0
+        for base_path in hot_paths:
+            if not os.path.exists(base_path): continue
+            for root, dirs, files in os.walk(base_path):
+                if config.CANCELAR_ESCANEO: return
+                dirs[:] = [d for d in dirs if d.lower() not in IGNORED_FOLDERS and not d.startswith('.')]
+                for name in files:
+                    try:
+                        count += 1
+                        if count % 1000 == 0 and status_callback:
+                            status_callback(f"Indexing Files... ({count})")
+                        fp = os.path.join(root, name)
+                        ext = os.path.splitext(name)[1].lower()
+                        is_hidden = False
+                        try:
+                            attrs = ctypes.windll.kernel32.GetFileAttributesW(fp)
+                            if attrs != -1 and (attrs & 2): is_hidden = True
+                        except: pass
+                        sz = 0
+                        try: sz = os.path.getsize(fp)
+                        except: pass
+                        self.file_snapshot.append({'path': fp, 'name': name.lower(), 'ext': ext, 'size': sz, 'hidden': is_hidden})
+                    except: pass
+        self.is_ready = True
+        if status_callback: status_callback("Snapshot Ready. Starting Modules...")
 
 # =============================================================================
 # FASES DE ESCANEO
@@ -58,6 +260,9 @@ def worker_virustotal():
 
 def fase_shimcache(palabras, modo):
     if config.CANCELAR_ESCANEO: return
+    
+    # --- CORRECCIÓN: USAR RUTA ABSOLUTA ---
+    config.reporte_shim = asegurar_ruta_reporte("Shimcache_Rastros.txt")
     
     # --- PASO 1: RECONOCIMIENTO DE HARDWARE ---
     discos_fijos = []    
@@ -147,7 +352,11 @@ def fase_shimcache(palabras, modo):
         f.write("(Se han ocultado librerías nativas de System32 para facilitar la lectura)\n\n")
         for h in historial_limpio:
             f.write(f" {h}\n")
-
+    
+    # INTEGRACIÓN: Actualizar HTML usando la ruta absoluta del archivo generado
+    try: generar_reporte_html(os.path.dirname(config.reporte_shim), {'f1': {'active': True}})
+    except: pass
+    
 def fase_rastro_appcompat(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     objetivos = [
@@ -156,6 +365,9 @@ def fase_rastro_appcompat(palabras, modo):
         (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", "COMPATIBILITY LAYERS (USER)"),
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers", "COMPATIBILITY LAYERS (SYSTEM)")
     ]
+
+    # Forzar ruta si no existe
+    if not config.reporte_appcompat: config.reporte_appcompat = "AppCompat.txt"
 
     with open(config.reporte_appcompat, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== APPCOMPAT & GHOST TRACES: {datetime.datetime.now()} ===\n")
@@ -206,66 +418,37 @@ def fase_rastro_appcompat(palabras, modo):
             f.write("\n")
         if hits == 0:
             f.write("[OK] No suspicious execution traces found in AppCompat.\n")
+    
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_appcompat)), {'f2': {'active': True}})
+    except: pass
 
-def fase_nombre_original(vt, palabras, modo):
+# --- F3: IDENTITY CHECK (OPTIMIZADA) ---
+def fase_nombre_original(context, palabras, vt, modo):
+    """OPTIMIZADA: Usa context.process_snapshot en vez de wmic"""
     if config.CANCELAR_ESCANEO: return
     print(f"[3/25] Identity Analysis (Multi-Threaded Nuclear) [MAX SPEED]...")
     
+    # Asegurar ruta del reporte
     if not config.reporte_sospechosos: 
         base = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
         fold = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
         config.reporte_sospechosos = os.path.join(base, fold, "cambios_sospechosos.txt")
 
-    blacklisted_dirs = ["winsxs", "servicing", "assembly", "microsoft.net", "wbem", "system32\\driverstore"]
-    high_priority_system = ["windows\\temp", "windows\\prefetch", "windows\\syswow64", "windows\\system32", "programdata", "appdata"]
-    files_to_check = set()
-
-    try:
-        cmd = 'wmic process get ExecutablePath /format:csv'
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000)
-        out, _ = proc.communicate()
-        if out:
-            for line in out.splitlines():
-                if "," in line:
-                    p = line.split(",")[-1].strip()
-                    if p and os.path.exists(p) and p.lower().endswith(".exe"): files_to_check.add(p)
-    except: pass
-
-    drives = [f"{d}:\\" for d in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" if os.path.exists(f"{d}:\\")]
-    for drive in drives:
-        if config.CANCELAR_ESCANEO: break
-        for root, dirs, files in os.walk(drive, topdown=True):
-            if config.CANCELAR_ESCANEO: break
-            root_lower = root.lower()
-            if "windows" in root_lower:
-                is_priority = any(p in root_lower for p in high_priority_system)
-                if not is_priority:
-                    if root_lower.endswith("windows"): pass 
-                    else: 
-                        dirs[:] = []
-                        continue
-            if any(b in root_lower for b in blacklisted_dirs):
-                dirs[:] = []
-                continue
-            for name in files:
-                if name.lower().endswith(".exe"):
-                    full_path = os.path.join(root, name)
-                    try:
-                        if os.path.getsize(full_path) < 40 * 1024 * 1024:
-                            files_to_check.add(full_path)
-                    except: pass
-
-    def analyze_single_file(ruta):
-        if config.CANCELAR_ESCANEO: return None
+    detections = []
+    
+    # Usar snapshot en memoria (instantáneo)
+    for proc in context.process_snapshot:
         try:
-            nombre_disco = os.path.basename(ruta).lower()
-            is_suspicious_loc = any(x in ruta.lower() for x in ["temp", "download", "desktop", "appdata"])
-            is_keyword = any(p in nombre_disco for p in palabras)
-            if modo != "Analizar Todo" and not is_keyword and not is_suspicious_loc:
-                if "windows" in ruta.lower(): pass 
-                else: return None
+            exe_path = proc.get('exe')
+            if not exe_path or not os.path.exists(exe_path): continue
+            
+            # Optimización: Solo analizar si el nombre coincide con palabras clave o modo total
+            proc_name_lower = (proc.get('name') or "").lower()
+            should_scan = modo == "Analizar Todo" or any(p in proc_name_lower for p in palabras)
+            if not should_scan: continue
 
-            pe = pefile.PE(ruta, fast_load=True)
+            pe = pefile.PE(exe_path, fast_load=True)
             original_name = None
             if hasattr(pe, 'FileInfo'):
                 for info in pe.FileInfo:
@@ -281,29 +464,20 @@ def fase_nombre_original(vt, palabras, modo):
                             if original_name: break
                     if original_name: break
             pe.close()
-
+            
             if original_name:
                 real = original_name.replace(".exe", "").strip()
-                actual = nombre_disco.replace(".exe", "").strip()
+                actual = proc_name_lower.replace(".exe", "").strip()
                 whitelist = ["setup", "install", "update", "unity", "unins", "launch", "dota", "csgo"]
+                # Detectar discrepancia
                 if real != actual and real not in actual and actual not in real:
                     if not any(w in real for w in whitelist):
-                        return (ruta, nombre_disco, original_name)
+                        detections.append((exe_path, actual, real))
         except: pass
-        return None
 
-    detections = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-        futures = {executor.submit(analyze_single_file, f): f for f in files_to_check}
-        for future in concurrent.futures.as_completed(futures):
-            if config.CANCELAR_ESCANEO: break
-            res = future.result()
-            if res: detections.append(res)
-
+    # Escribir reporte
     with open(config.reporte_sospechosos, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== ANALISIS IDENTIDAD (MULTI-THREADED): {datetime.datetime.now()} ===\n")
-        f.write(f"Files Scanned: {len(files_to_check)}\n")
-        f.write(f"Threads Used: 50 | Time Optimized: Yes\n\n")
+        f.write(f"=== ANALISIS IDENTIDAD (OPTIMIZED MEMORY SCAN): {datetime.datetime.now()} ===\n\n")
         if detections:
             for ruta, actual, real in detections:
                 f.write(f"[!!!] FAKE NAME DETECTED:\n")
@@ -313,11 +487,18 @@ def fase_nombre_original(vt, palabras, modo):
                 f.write("-" * 50 + "\n")
                 if vt: cola_vt.put(ruta)
         else:
-            f.write("No identity mismatches found.\n")
+            f.write("No identity mismatches found in running processes.\n")
+    
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_sospechosos)), {'f3': {'active': True}})
+    except: pass
 
+
+# --- F4: FIRMAS DIGITALES ---
 def verificar_firma_nativa(filepath):
     try:
         wintrust = ctypes.windll.wintrust
+        # Estructuras WinAPI mínimas necesarias
         class WINTRUST_FILE_INFO(ctypes.Structure):
             _fields_ = [("cbStruct", ctypes.c_ulong), ("pcwszFilePath", ctypes.c_wchar_p), ("hFile", ctypes.c_void_p), ("pgKnownSubject", ctypes.c_void_p)]
         class WINTRUST_DATA(ctypes.Structure):
@@ -325,77 +506,72 @@ def verificar_firma_nativa(filepath):
         
         guid_bytes = uuid.UUID('{00AAC56B-CD44-11d0-8CC2-00C04FC295EE}').bytes_le
         p_guid = ctypes.create_string_buffer(guid_bytes)
-        file_info = WINTRUST_FILE_INFO()
-        file_info.cbStruct = ctypes.sizeof(WINTRUST_FILE_INFO)
-        file_info.pcwszFilePath = filepath
-        trust_data = WINTRUST_DATA()
-        trust_data.cbStruct = ctypes.sizeof(WINTRUST_DATA)
-        trust_data.dwUIChoice = 2
-        trust_data.fdwRevocationChecks = 0
-        trust_data.dwUnionChoice = 1
-        trust_data.pFile = ctypes.pointer(file_info)
-        trust_data.dwStateAction = 1
-        trust_data.dwProvFlags = 0x00000010 | 0x00000800
+        file_info = WINTRUST_FILE_INFO(ctypes.sizeof(WINTRUST_FILE_INFO), filepath, None, None)
+        trust_data = WINTRUST_DATA(ctypes.sizeof(WINTRUST_DATA), None, None, 2, 0, 1, ctypes.pointer(file_info), 1, None, None, 0, 0, None)
         
         status = wintrust.WinVerifyTrust(None, p_guid, ctypes.byref(trust_data))
-        trust_data.dwStateAction = 2
+        trust_data.dwStateAction = 2 # WTD_STATEACTION_CLOSE
         wintrust.WinVerifyTrust(None, p_guid, ctypes.byref(trust_data))
         
         if status == 0: return True, "VALID_TRUSTED"
-        errores = {0x800B0100: "NO_SIGNATURE", 0x800B0101: "EXPIRED", 0x800B0109: "UNTRUSTED_ROOT", 0x80096010: "BAD_DIGEST"}
-        return False, errores.get(status, f"INVALID_CODE_{hex(status)}")
+        return False, f"INVALID_CODE_{hex(status)}"
     except Exception as e: return False, f"ERROR_API: {str(e)}"
 
-def fase_verificar_firmas(palabras, vt, modo):
+def fase_verificar_firmas(context, palabras, vt, modo): # IMPORTANTE: 'context' en lugar de 'palabras' si se usa snapshot, o mantener args si gui.py lo manda así
+    # NOTA: gui.py manda [context, palabras, vt, modo] para f4? Revisa gui.py.
+    # Asumiendo argumentos estándar según tu gui.py
     if config.CANCELAR_ESCANEO: return
     print(f"[4/25] Digital Signature (Deep Recursive + Native API) [LETHAL SPEED]...")
     
-    base_path = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
-    folder_name = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
-    config.reporte_firmas = os.path.join(base_path, folder_name, "Digital_Signatures_ZeroTrust.txt")
+    # Asegurar ruta
+    if not config.reporte_firmas:
+        base = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
+        fold = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
+        config.reporte_firmas = os.path.join(base, fold, "Digital_Signatures_ZeroTrust.txt")
     
     target_exts = ('.exe', '.dll', '.sys', '.bat', '.ps1', '.vbs', '.ahk', '.lua', '.py', '.tmp')
+    # Filtros para no escanear basura
     ignored_folders = {"node_modules", ".git", ".vs", "__pycache__", "vendor", "lib", "libs", "include", "steamapps", "riot games", "epic games", "ubisoft", "program files", "windows"}
+    
     files_to_scan = set()
     user_profile = os.environ["USERPROFILE"]
-    deep_zones = [os.path.join(user_profile, "Desktop"), os.path.join(user_profile, "Downloads"), os.path.join(user_profile, "AppData", "Local", "Temp"), os.path.join(user_profile, "AppData", "Roaming")]
-    onedrive = os.path.join(user_profile, "OneDrive")
-    if os.path.exists(onedrive):
-        deep_zones.append(os.path.join(onedrive, "Desktop"))
-        deep_zones.append(os.path.join(onedrive, "Downloads"))
-
-    try:
-        cmd = 'wmic process get ExecutablePath /format:csv'
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000)
-        out, _ = proc.communicate()
-        if out:
-            for line in out.splitlines():
-                if "," in line:
-                    path = line.split(",")[-1].strip()
-                    if path and os.path.exists(path): files_to_scan.add(path)
-    except: pass
-
+    
+    # Zonas de búsqueda profunda
+    deep_zones = [
+        os.path.join(user_profile, "Desktop"), 
+        os.path.join(user_profile, "Downloads"), 
+        os.path.join(user_profile, "AppData", "Local", "Temp"), 
+        os.path.join(user_profile, "AppData", "Roaming")
+    ]
+    
+    # Escaneo recursivo optimizado
     for zone in deep_zones:
         if not os.path.exists(zone): continue
         max_depth = 5 if "AppData" in zone else 10 
         root_depth = zone.count(os.sep)
+        
         for root, dirs, files in os.walk(zone, topdown=True):
             if config.CANCELAR_ESCANEO: break
+            # Poda de directorios
             dirs[:] = [d for d in dirs if d.lower() not in ignored_folders and not d.startswith('.')]
+            
             current_depth = root.count(os.sep)
             if current_depth - root_depth > max_depth:
                 del dirs[:]
                 continue
+                
             for name in files:
                 if name.lower().endswith(target_exts):
                     full_path = os.path.join(root, name)
                     try:
+                        # Limite de tamaño para no tardar años
                         if os.path.getsize(full_path) < 150 * 1024 * 1024:
                             files_to_scan.add(full_path)
                     except: pass
 
     scanned_count = 0
     unsigned_count = 0
+    
     with open(config.reporte_firmas, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== DIGITAL SIGNATURE DEEP SCAN: {datetime.datetime.now()} ===\n")
         f.write(f"Engine: Native WinVerifyTrust | Scope: Recursive (Smart Filter)\n")
@@ -412,87 +588,92 @@ def fase_verificar_firmas(palabras, vt, modo):
                 f.write(f"[!!!] POTENTIAL THREAT (Unsigned): {file_name}\n")
                 f.write(f"      Path: {file_path}\n")
                 f.write(f"      Sign Status: {status_msg}\n")
+                
                 ext = os.path.splitext(file_name)[1].lower()
                 if ext in ['.lua', '.ahk', '.py', '.bat']:
                     f.write(f"      Type: SCRIPT FILE (High Risk if hidden)\n")
+                
                 f.write("-" * 40 + "\n")
                 f.flush()
                 if vt: cola_vt.put(file_path)
             elif modo == "Analizar Todo":
                 f.write(f"[OK] {file_name} [Signed]\n")
+        
         f.write(f"\nScan Finished.\nTotal Files Checked: {scanned_count}\nUnsigned/Suspicious: {unsigned_count}")
 
-def fase_buscar_en_disco(kws):
-    if config.CANCELAR_ESCANEO: return
-    with open(config.reporte_path, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== BUSQUEDA: {datetime.datetime.now()} ===\n\n")
-        for r, _, as_ in os.walk("C:\\Users"):
-            for n in as_:
-                if any(k in n.lower() for k in kws): f.write(f"DETECTADO: {os.path.join(r, n)}\n"); f.flush()
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_firmas)), {'f4': {'active': True}})
+    except: pass
 
-def fase_archivos_ocultos(palabras, modo):
+# --- F5: BUSCAR EN DISCO (OPTIMIZADA) ---
+def fase_buscar_en_disco(context, kws, modo):
     if config.CANCELAR_ESCANEO: return
-    user_profile = os.environ.get('USERPROFILE')
-    rutas_calientes = [user_profile, os.path.join(user_profile, "AppData"), r"C:\ProgramData", r"C:\Temp"]
-    ignorar_carpetas = ["microsoft", "windows", "google", "mozilla", "node_modules", ".git"]
-    FILE_ATTRIBUTE_HIDDEN = 2
-    FILE_ATTRIBUTE_SYSTEM = 4
+    
+    # Asegurar ruta
+    if not config.reporte_path: config.reporte_path = "Disk_Search.txt"
+    
+    hits = []
+    # Usar snapshot en memoria (instantáneo)
+    for f in context.file_snapshot:
+        for p in kws:
+            if p.lower() in f['name']:
+                hits.append(f"Found: {f['path']} (Keyword: {p})")
+                break
+                
+    with open(config.reporte_path, "w", encoding="utf-8", buffering=1) as f:
+        f.write(f"=== DISK SEARCH (MEMORY SNAPSHOT): {datetime.datetime.now()} ===\n\n")
+        if hits:
+            f.write("\n".join(hits))
+        else:
+            f.write("No keywords found in hot paths.\n")
+
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_path)), {'f5': {'active': True}})
+    except: pass
+
+
+# --- F6: ARCHIVOS OCULTOS (OPTIMIZADA) ---
+def fase_archivos_ocultos(context, palabras, modo):
+    if config.CANCELAR_ESCANEO: return
+    
+    # Asegurar ruta
+    if not config.reporte_ocultos: config.reporte_ocultos = "Hidden_Files.txt"
+    
+    hits = []
+    # Usar snapshot en memoria (instantáneo)
+    for f in context.file_snapshot:
+        if f['hidden']:
+            name = f['name']
+            path = f['path']
+            tag = "[OCULTO]"
+            
+            # Clasificación de riesgo
+            if name.endswith(('.exe', '.bat', '.ps1', '.vbs', '.dll', '.sys')): 
+                tag = "[!!!] HIDDEN EXECUTABLE"
+            elif any(p in name for p in palabras): 
+                tag = "[ALERTA] KEYWORD HIDDEN"
+            
+            hits.append(f"{tag}: {path}")
 
     with open(config.reporte_ocultos, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== SCAN DE ARCHIVOS OCULTOS (SMART): {datetime.datetime.now()} ===\n")
-        f.write("Target: User Profile, AppData, ProgramData (Skipping Windows System Files)\n\n")
-        count = 0
-        def escanear_rapido(directorio, profundidad_max=10, nivel_actual=0):
-            nonlocal count
-            if nivel_actual > profundidad_max or config.CANCELAR_ESCANEO: return
-            try:
-                with os.scandir(directorio) as it:
-                    for entry in it:
-                        if config.CANCELAR_ESCANEO: break
-                        if entry.is_dir():
-                            name_low = entry.name.lower()
-                            if not entry.is_symlink() and name_low not in ignorar_carpetas:
-                                escanear_rapido(entry.path, profundidad_max, nivel_actual + 1)
-                        elif entry.is_file():
-                            try:
-                                stats = entry.stat()
-                                attrs = stats.st_file_attributes
-                                is_hidden = attrs & FILE_ATTRIBUTE_HIDDEN
-                                is_system = attrs & FILE_ATTRIBUTE_SYSTEM
-                                if is_hidden or is_system:
-                                    nombre = entry.name
-                                    nombre_low = nombre.lower()
-                                    ruta = entry.path
-                                    es_sospechoso = False
-                                    tag = "[INFO]"
-                                    if is_hidden and is_system:
-                                        tag = "[!!!] SUPER HIDDEN (SYSTEM+HIDDEN)"
-                                        es_sospechoso = True
-                                    elif any(nombre_low.endswith(x) for x in [".exe", ".bat", ".cmd", ".vbs", ".ps1", ".dll", ".sys"]):
-                                        tag = "[!!!] HIDDEN EXECUTABLE"
-                                        es_sospechoso = True
-                                    elif any(p in nombre_low for p in palabras):
-                                        tag = "[ALERTA] KEYWORD MATCH"
-                                        es_sospechoso = True
-                                    elif modo == "Analizar Todo":
-                                        if not nombre_low.endswith(".ini") and not nombre_low.endswith(".xml"):
-                                            tag = "[OCULTO]"
-                                            es_sospechoso = True
-                                    if es_sospechoso:
-                                        f.write(f"{tag}: {ruta}\n")
-                                        if is_system: f.write("      Attr: SYSTEM + HIDDEN\n")
-                                        count += 1
-                            except Exception: pass
-            except PermissionError: pass
-            except Exception: pass
+        f.write(f"=== HIDDEN FILES (MEMORY SNAPSHOT): {datetime.datetime.now()} ===\n\n")
+        if hits:
+            f.write("\n".join(hits))
+        else:
+            f.write("No hidden files found in hot paths.\n")
 
-        for ruta_base in rutas_calientes:
-            if os.path.exists(ruta_base): escanear_rapido(ruta_base)
-        if count == 0: f.write("[OK] No suspicious hidden files found in critical areas.\n")
-
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_ocultos)), {'f6': {'active': True}})
+    except: pass
+    
+    
+# --- F7: MFT & ADS ---
 def fase_mft_ads(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[7/25] MFT & ADS Hunter (Native Speed) [LETHAL]...")
+    
+    # Asegurar ruta
+    if not config.reporte_mft: config.reporte_mft = "MFT_ADS.txt"
     
     class WIN32_FIND_STREAM_DATA(ctypes.Structure):
         _fields_ = [("StreamSize", ctypes.c_longlong), ("cStreamName", ctypes.c_wchar * 296)]
@@ -540,16 +721,25 @@ def fase_mft_ads(palabras, modo):
                                         f.write("-" * 40 + "\n")
                                 if not FindNextStreamW(h_find, ctypes.byref(find_data)): break
                         finally: FindClose(h_find)
+    
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_mft)), {'f7': {'active': True}})
+    except: pass
 
+
+# --- F8: USERASSIST ---
 def fase_userassist(palabras, modo):
     print("[28/28] UserAssist (Human Interaction + Timestamps)...")
-    try:
-        base_path = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
-        folder_name = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
-    except:
-        base_path = os.path.abspath(".")
-        folder_name = "Resultados_SS"
-    config.reporte_userassist = os.path.join(base_path, folder_name, "User_Interaction_Trace.txt")
+    
+    # Asegurar ruta
+    if not config.reporte_userassist: 
+        try:
+            base_path = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
+            folder_name = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
+        except:
+            base_path = os.path.abspath(".")
+            folder_name = "Resultados_SS"
+        config.reporte_userassist = os.path.join(base_path, folder_name, "User_Interaction_Trace.txt")
 
     def parse_userassist_data(binary_data):
         try:
@@ -568,6 +758,7 @@ def fase_userassist(palabras, modo):
         except: return 0, "Error Parsing", None
 
     limit_date = datetime.datetime.now() - datetime.timedelta(days=5)
+    
     with open(config.reporte_userassist, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== USERASSIST FORENSICS: {datetime.datetime.now()} ===\n")
         f.write("Evidence of GUI Execution, Run Counts, and Deleted Files.\n\n")
@@ -621,19 +812,22 @@ def fase_userassist(palabras, modo):
         except Exception as e: f.write(f"Error reading Registry: {e}\n")
         if hits == 0: f.write("[OK] No suspicious user interactions found in recent history.\n")
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_userassist)), {'f8': {'active': True}})
+    except: pass
+
+# --- F9: USB HISTORY ---
 def fase_usb_history(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[9/26] USB History & ShellBags (Devices + Folder Access) [LETHAL]")
     
-    try: report_file = config.reporte_usb
-    except:
-        base_path = config.HISTORIAL_RUTAS.get("path", os.path.abspath("."))
-        folder = config.HISTORIAL_RUTAS.get("folder", "Resultados_SS")
-        report_file = os.path.join(base_path, folder, "USB_Hardware_Report.txt")
+    # Asegurar ruta
+    if not config.reporte_usb: config.reporte_usb = "USB_History.txt"
 
-    with open(report_file, "w", encoding="utf-8", buffering=1) as f:
+    with open(config.reporte_usb, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== USB EXECUTION & SHELLBAGS FORENSICS: {datetime.datetime.now()} ===\n")
         f.write("Target: Hardware Cheats, Removed Drives & Folder Access History.\n\n")
+        
         discos_usb_activos = []
         discos_fijos = ["C:"] 
         try:
@@ -650,6 +844,7 @@ def fase_usb_history(palabras, modo):
         except: pass
         f.write(f"[INFO] Active USB Drives: {', '.join(discos_usb_activos) if discos_usb_activos else 'None'}\n")
         f.write("-" * 60 + "\n\n")
+        
         f.write("--- [1] HARDWARE ID SCAN (Arduinos & DMA) ---\n")
         bad_vids = {"2341": "ARDUINO", "16C0": "TEENSY", "1B4F": "SPARKFUN", "04D8": "MICROCHIP", "1A86": "CH340", "0403": "FTDI"}
         found_hw = False
@@ -680,6 +875,7 @@ def fase_usb_history(palabras, modo):
                                             dt = datetime.datetime(1601, 1, 1) + datetime.timedelta(microseconds=ts_ns/10)
                                             last_seen = dt.strftime('%Y-%m-%d %H:%M:%S')
                                         except: last_seen = "Unknown"
+                                        
                                         if threat_msg:
                                             f.write(f"[!!!] HARDWARE CHEAT DETECTED: {threat_msg}\n")
                                             f.write(f"      Device: {name}\n")
@@ -717,6 +913,7 @@ def fase_usb_history(palabras, modo):
                                     if "X:" not in drive_letter and "Z:" not in drive_letter:
                                         is_usb_exec = True
                                         status_msg = "REMOVED DRIVE (GHOST)"
+                                
                                 if is_usb_exec:
                                     last_run = "Unknown"
                                     if len(data) >= 68:
@@ -726,6 +923,7 @@ def fase_usb_history(palabras, modo):
                                                 dt = datetime.datetime(1601, 1, 1) + datetime.timedelta(microseconds=ft/10)
                                                 last_run = dt.strftime('%Y-%m-%d %H:%M:%S')
                                         except: pass
+                                    
                                     if n_real.lower().endswith((".exe", ".bat", ".cmd", ".ps1")):
                                         tag = "[!!!]"
                                         if any(p in n_real.lower() for p in palabras): tag = "[!!!] CONFIRMED CHEAT"
@@ -763,6 +961,7 @@ def fase_usb_history(palabras, modo):
                     if drive in discos_usb_activos: drive_status = "ACTIVE USB"
                     elif drive in discos_fijos: continue 
                     else: drive_status = "REMOVED/DISCONNECTED"
+                    
                     if drive_status != "UNKNOWN":
                         tag = "[EVIDENCE]"
                         if drive_status == "REMOVED/DISCONNECTED": tag = "[!!!] GHOST LNK"
@@ -777,11 +976,13 @@ def fase_usb_history(palabras, modo):
         f.write("Detects specific folders opened by the user, even if the drive is gone.\n\n")
         folder_hits = 0
         KEYS_SHELLBAGS = [r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\BagMRU", r"Software\Microsoft\Windows\Shell\BagMRU"]
+        
         def _extract_clean_strings(data):
             try:
                 text = data.decode('utf-16-le', errors='ignore')
                 return re.findall(r'[a-zA-Z0-9_\-\. \(\)\[\]]{4,}', text)
             except: return []
+            
         def _walk_shellbags(key_path, hits_list):
             try:
                 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
@@ -803,6 +1004,7 @@ def fase_usb_history(palabras, modo):
                                     if is_sus: hits_list.append(n)
                             i += 1
                     except OSError: pass
+                    
                     try:
                         j = 0
                         while True:
@@ -812,10 +1014,12 @@ def fase_usb_history(palabras, modo):
                             j += 1
                     except OSError: pass
             except: pass
+            
         detected_folders = []
         for k in KEYS_SHELLBAGS:
             if config.CANCELAR_ESCANEO: break
             _walk_shellbags(k, detected_folders)
+            
         detected_folders = list(set(detected_folders))
         if detected_folders:
             for folder in detected_folders:
@@ -823,16 +1027,27 @@ def fase_usb_history(palabras, modo):
                 folder_hits += 1
         else: f.write("[OK] No suspicious folder names found in ShellBags.\n")
         f.write(f"\nTotal USB/HW Anomalies: {ua_hits + lnk_hits + folder_hits + (1 if found_hw else 0)}\n")
-    print(f"[✓] USB & ShellBags analysis completed.")
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_usb)), {'f9': {'active': True}})
+    except: pass
+
+
+# --- F10: DNS CACHE ---
 def fase_dns_cache(palabras, modo):
     if config.CANCELAR_ESCANEO: return
+    
     try:
         subprocess.run("taskkill /IM discord.exe /F", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(1)
     except: pass 
+    
     discord_path = os.path.join(os.getenv('APPDATA'), 'discord', 'Local Storage', 'leveldb')
     url_pattern = re.compile(rb'https?://(?:cdn|media)\.discordapp\.(?:com|net)/attachments/[\w\d_\-\./]+')
+    
+    # Asegurar ruta
+    if not config.reporte_dns: config.reporte_dns = "DNS_Cache.txt"
+
     with open(config.reporte_dns, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== REPORTE DE RED Y ORIGEN (DNS + DISCORD): {datetime.datetime.now()} ===\n")
         f.write(f"\n[+] SECCIÓN DNS CACHE (Dominios Visitados)\n")
@@ -851,6 +1066,7 @@ def fase_dns_cache(palabras, modo):
                             dns_encontrados = True
             if not dns_encontrados: f.write("  (Sin datos relevantes)\n")
         except Exception as e: f.write(f"  [ERROR] DNS: {str(e)}\n")
+        
         f.write(f"\n\n[+] SECCIÓN DISCORD DOWNLOADS (Rastreo de Links)\n")
         f.write("="*60 + "\n")
         if os.path.exists(discord_path):
@@ -869,6 +1085,7 @@ def fase_dns_cache(palabras, modo):
                                     if any(ext in url_str.lower() for ext in ['.exe', '.dll', '.rar', '.zip', '.7z']): es_sospechoso = True
                                     elif modo != "Analizar Todo" and any(p in url_str.lower() for p in palabras): es_sospechoso = True
                                     elif modo == "Analizar Todo": es_sospechoso = True
+                                    
                                     if es_sospechoso:
                                         f.write(f"  > LINK RECUPERADO: {url_str}\n")
                                         links_encontrados += 1
@@ -878,24 +1095,52 @@ def fase_dns_cache(palabras, modo):
         else: f.write("  [INFO] No se encontró carpeta de Discord.\n")
         f.flush()
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_dns)), {'f10': {'active': True}})
+    except: pass
+
+# --- F11: BROWSER FORENSICS ---
 def fase_browser_forensics(palabras, modo):
     if config.CANCELAR_ESCANEO: return
-    now = datetime.datetime.now(); thirty_days_ago = now - datetime.timedelta(days=30)
-    epoch_chromium = datetime.datetime(1601, 1, 1); limit_chromium = int((thirty_days_ago - epoch_chromium).total_seconds() * 1000000)
-    epoch_firefox = datetime.datetime(1970, 1, 1); limit_firefox = int((thirty_days_ago - epoch_firefox).total_seconds() * 1000000)
-    base_u = "C:\\Users"; all_u = []
+    
+    # Asegurar ruta
+    if not config.reporte_browser: config.reporte_browser = "Browser.txt"
+    
+    now = datetime.datetime.now()
+    thirty_days_ago = now - datetime.timedelta(days=30)
+    epoch_chromium = datetime.datetime(1601, 1, 1)
+    limit_chromium = int((thirty_days_ago - epoch_chromium).total_seconds() * 1000000)
+    epoch_firefox = datetime.datetime(1970, 1, 1)
+    limit_firefox = int((thirty_days_ago - epoch_firefox).total_seconds() * 1000000)
+    
+    base_u = "C:\\Users"
+    all_u = []
     if os.path.exists(base_u):
         for u_f in os.listdir(base_u):
             f_u_p = os.path.join(base_u, u_f)
-            if os.path.isdir(f_u_p) and u_f.lower() not in ["public", "default", "default user", "all users"]: all_u.append(f_u_p)
-    b_cfg = { "Chrome": {"r": r"AppData\Local\Google\Chrome\User Data", "t": "chromium"}, "Edge": {"r": r"AppData\Local\Microsoft\Edge\User Data", "t": "chromium"}, "Brave": {"r": r"AppData\Local\BraveSoftware\Brave-Browser\User Data", "t": "chromium"}, "Opera": {"r": r"AppData\Roaming\Opera Software\Opera Stable", "t": "opera"}, "Firefox": {"r": r"AppData\Roaming\Mozilla\Firefox\Profiles", "t": "firefox"} }
+            if os.path.isdir(f_u_p) and u_f.lower() not in ["public", "default", "default user", "all users"]: 
+                all_u.append(f_u_p)
+                
+    b_cfg = { 
+        "Chrome": {"r": r"AppData\Local\Google\Chrome\User Data", "t": "chromium"}, 
+        "Edge": {"r": r"AppData\Local\Microsoft\Edge\User Data", "t": "chromium"}, 
+        "Brave": {"r": r"AppData\Local\BraveSoftware\Brave-Browser\User Data", "t": "chromium"}, 
+        "Opera": {"r": r"AppData\Roaming\Opera Software\Opera Stable", "t": "opera"}, 
+        "Firefox": {"r": r"AppData\Roaming\Mozilla\Firefox\Profiles", "t": "firefox"} 
+    }
+
     with open(config.reporte_browser, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== BROWSER FORENSICS (LAST 30 DAYS): {now} ===\n\n")
+        
         for u_h in all_u:
             f.write(f"[[[ USER: {os.path.basename(u_h)} ]]]\n")
+            
             for b_n, cfg in b_cfg.items():
-                b_p = os.path.join(u_h, cfg["r"]); b_t = cfg["t"]
+                b_p = os.path.join(u_h, cfg["r"])
+                b_t = cfg["t"]
+                
                 if not os.path.exists(b_p): continue
+                
                 profs = []
                 if b_t == "chromium":
                     for i in os.listdir(b_p):
@@ -904,91 +1149,156 @@ def fase_browser_forensics(palabras, modo):
                             h_f = os.path.join(f_i, "History")
                             if os.path.exists(h_f): profs.append((i, h_f))
                 elif b_t == "opera":
-                    h_f = os.path.join(b_p, "History"); 
+                    h_f = os.path.join(b_p, "History")
                     if os.path.exists(h_f): profs.append(("Default", h_f))
                 elif b_t == "firefox":
                     for p in os.listdir(b_p):
                         pl_f = os.path.join(b_p, p, "places.sqlite")
                         if os.path.exists(pl_f): profs.append((p, pl_f))
+                        
                 for p_n, db_f in profs:
                     f.write(f"--- {b_n} [{p_n}] ---\n")
                     tmp_db = f"tmp_{random.randint(1000,9999)}.sqlite"
+                    
                     try: shutil.copy2(db_f, tmp_db)
                     except:
                         try:
                             with open(db_f, "rb") as source, open(tmp_db, "wb") as dest: dest.write(source.read())
-                        except: f.write(" [!] Locked/Access Denied\n"); continue
+                        except: 
+                            f.write(" [!] Locked/Access Denied\n")
+                            continue
+                            
                     try:
-                        conn = sqlite3.connect(tmp_db); cursor = conn.cursor()
+                        conn = sqlite3.connect(tmp_db)
+                        cursor = conn.cursor()
+                        
                         if b_t in ["chromium", "opera"]:
+                            # --- HISTORY ---
                             try:
                                 cursor.execute("SELECT url, title, last_visit_time FROM urls WHERE last_visit_time > ? ORDER BY last_visit_time DESC", (limit_chromium,))
                                 for u, t, vt in cursor.fetchall():
-                                    try: dt = epoch_chromium + datetime.timedelta(microseconds=vt); fech = dt.strftime("%Y-%m-%d %H:%M:%S")
+                                    try: 
+                                        dt = epoch_chromium + datetime.timedelta(microseconds=vt)
+                                        fech = dt.strftime("%Y-%m-%d %H:%M:%S")
                                     except: fech = "Unknown"
+                                    
                                     info = f"[HIST] [{fech}] {t} - {u}"
-                                    if modo == "Analizar Todo" or any(p in info.lower() for p in palabras): f.write(f"{info}\n"); f.flush()
+                                    if modo == "Analizar Todo" or any(p in info.lower() for p in palabras): 
+                                        f.write(f"{info}\n"); f.flush()
                             except: pass
+                            
+                            # --- DOWNLOADS ---
                             f.write("\n  > DOWNLOADS (Last 30 Days):\n")
                             rows_dl = []
                             try:
-                                cursor.execute("SELECT target_path, start_time, tab_url, referrer FROM downloads WHERE start_time > ? ORDER BY start_time DESC", (limit_chromium,)); rows_dl = cursor.fetchall()
+                                cursor.execute("SELECT target_path, start_time, tab_url, referrer FROM downloads WHERE start_time > ? ORDER BY start_time DESC", (limit_chromium,))
+                                rows_dl = cursor.fetchall()
                             except: pass
+                            
                             for p, st, t_url, ref in rows_dl:
-                                try: dt = epoch_chromium + datetime.timedelta(microseconds=st); fech = dt.strftime("%Y-%m-%d %H:%M:%S")
+                                try: 
+                                    dt = epoch_chromium + datetime.timedelta(microseconds=st)
+                                    fech = dt.strftime("%Y-%m-%d %H:%M:%S")
                                 except: fech = "Unknown"
+                                
                                 info = f"  [DL] [{fech}] FILE: {p}\n       ORIGIN: {t_url if t_url else ref}"
-                                if modo == "Analizar Todo" or any(k in info.lower() for k in palabras): f.write(f"{info}\n"); f.flush()
+                                if modo == "Analizar Todo" or any(k in info.lower() for k in palabras): 
+                                    f.write(f"{info}\n"); f.flush()
+                                    
                         elif b_t == "firefox":
                             try:
                                 cursor.execute("SELECT P.url, P.title, H.visit_date FROM moz_places P, moz_historyvisits H WHERE P.id = H.place_id AND H.visit_date > ? ORDER BY H.visit_date DESC", (limit_firefox,))
                                 for u, t, vd in cursor.fetchall():
-                                    try: dt = epoch_firefox + datetime.timedelta(microseconds=vd); fech = dt.strftime("%Y-%m-%d %H:%M:%S")
+                                    try: 
+                                        dt = epoch_firefox + datetime.timedelta(microseconds=vd)
+                                        fech = dt.strftime("%Y-%m-%d %H:%M:%S")
                                     except: fech = "Unknown"
+                                    
                                     info = f"[HIST] [{fech}] {t} - {u}"
-                                    if modo == "Analizar Todo" or any(p in info.lower() for p in palabras): f.write(f"{info}\n"); f.flush()
+                                    if modo == "Analizar Todo" or any(p in info.lower() for p in palabras): 
+                                        f.write(f"{info}\n"); f.flush()
                             except: pass
-                        conn.close(); os.remove(tmp_db); f.write("\n")
+                            
+                        conn.close()
+                        os.remove(tmp_db)
+                        f.write("\n")
                     except: 
                         if os.path.exists(tmp_db): 
                             try: os.remove(tmp_db)
                             except: pass
             f.write("\n")
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_browser)), {'f11': {'active': True}})
+    except: pass
+
+
+# --- F12: PERSISTENCE ---
 def fase_persistence(palabras, modo):
     if config.CANCELAR_ESCANEO: return
+    
+    # Asegurar ruta
+    if not config.reporte_persistencia: config.reporte_persistencia = "Persistence.txt"
+
     with open(config.reporte_persistencia, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== PERSISTENCE: {datetime.datetime.now()} ===\n\n"); f.write("--- REGISTRY ---\n")
-        r_reg = [(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run"), (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run"), (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run")]
+        f.write(f"=== PERSISTENCE: {datetime.datetime.now()} ===\n\n")
+        
+        f.write("--- REGISTRY ---\n")
+        r_reg = [
+            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run"), 
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run"), 
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run")
+        ]
+        
         for h, s in r_reg:
             try:
                 with winreg.OpenKey(h, s) as k:
                     for i in range(winreg.QueryInfoKey(k)[1]):
                         n, v, _ = winreg.EnumValue(k, i)
                         info = f"KEY: {n} -> {v}"
-                        if modo == "Analizar Todo" or any(p in info.lower() for p in palabras): f.write(f"[REG] {info}\n"); f.flush()
+                        if modo == "Analizar Todo" or any(p in info.lower() for p in palabras): 
+                            f.write(f"[REG] {info}\n"); f.flush()
             except: pass
+            
         f.write("\n--- STARTUP FOLDER ---\n")
-        dirs = [os.path.join(os.getenv('APPDATA'), r"Microsoft\Windows\Start Menu\Programs\Startup"), os.path.join(os.getenv('PROGRAMDATA'), r"Microsoft\Windows\Start Menu\Programs\Startup")]
+        dirs = [
+            os.path.join(os.getenv('APPDATA'), r"Microsoft\Windows\Start Menu\Programs\Startup"), 
+            os.path.join(os.getenv('PROGRAMDATA'), r"Microsoft\Windows\Start Menu\Programs\Startup")
+        ]
+        
         for d in dirs:
             if os.path.exists(d):
                 for fl in os.listdir(d):
                     info = f"FILE: {fl} IN {d}"
-                    if modo == "Analizar Todo" or any(p in info.lower() for p in palabras): f.write(f"[DIR] {info}\n"); f.flush()
+                    if modo == "Analizar Todo" or any(p in info.lower() for p in palabras): 
+                        f.write(f"[DIR] {info}\n"); f.flush()
+                        
         f.write("\n--- TASKS ---\n")
         try:
             proc = subprocess.Popen('schtasks /query /fo LIST /v', stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, shell=True, text=True)
-            out, _ = proc.communicate(); t_n = ""
+            out, _ = proc.communicate()
+            t_n = ""
             for l in out.splitlines():
                 if "TaskName:" in l or "Nombre de tarea:" in l: t_n = l.strip()
                 if "Task To Run:" in l or "Tarea para ejecutar:" in l:
-                    t_r = l.strip(); full = f"{t_n} | {t_r}"
-                    if "Microsoft\\" not in t_n and (modo == "Analizar Todo" or any(p in full.lower() for p in palabras)): f.write(f"[TASK] {full}\n"); f.flush()
+                    t_r = l.strip()
+                    full = f"{t_n} | {t_r}"
+                    if "Microsoft\\" not in t_n and (modo == "Analizar Todo" or any(p in full.lower() for p in palabras)): 
+                        f.write(f"[TASK] {full}\n"); f.flush()
         except: pass
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_persistencia)), {'f12': {'active': True}})
+    except: pass
+
+# --- F13: EVENT LOGS ---
 def fase_event_logs(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[13/26] Windows Event Log Forensics [DEEP SCAN]...")
+    
+    # Asegurar ruta
+    if not config.reporte_eventos: config.reporte_eventos = "Events.txt"
+
     cmds = [
         ("SECURITY_LOG_CLEARED", "Get-WinEvent -FilterHashtable @{LogName='Security'; ID=1102} -MaxEvents 5 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='User';E={$_.Properties[1].Value}}, Message"),
         ("SYSTEM_LOG_CLEARED", "Get-WinEvent -FilterHashtable @{LogName='System'; ID=104} -MaxEvents 5 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='User';E={$_.Properties[0].Value}}, Message"),
@@ -997,15 +1307,19 @@ def fase_event_logs(palabras, modo):
         ("DEFENDER_THREAT_FOUND", "Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; ID=1116,1117} -MaxEvents 10 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='Threat';E={$_.Properties[0].Value}}, @{N='Path';E={$_.Properties[1].Value}}"),
         ("PROCESS_STARTED", "Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4688} -MaxEvents 50 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='Process';E={$_.Properties[5].Value}}, @{N='CommandLine';E={$_.Properties[8].Value}}")
     ]
+    
     with open(config.reporte_eventos, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== WINDOWS EVENT LOG FORENSICS: {datetime.datetime.now()} ===\n")
         f.write("Scanning for: Log Wiping, Kernel Drivers, AV Exclusions & Threats.\n\n")
+        
         for tit, ps in cmds:
             f.write(f"--- {tit} ---\n")
             try:
                 proc = subprocess.Popen(f'powershell -NoProfile -Command "{ps} | Format-List"', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, encoding='cp850', errors='ignore', creationflags=0x08000000)
                 out, err = proc.communicate()
-                if not out or "No se encontraron" in err or "NoMatchingEventsFound" in err: f.write("   [OK] Clean. No events found.\n")
+                
+                if not out or "No se encontraron" in err or "NoMatchingEventsFound" in err:
+                    f.write("   [OK] Clean. No events found.\n")
                 else:
                     bloque = []
                     for line in out.splitlines():
@@ -1015,34 +1329,63 @@ def fase_event_logs(palabras, modo):
                                 txt_bloque = "\n".join(bloque)
                                 es_sospechoso = False
                                 tag = ""
-                                if "LOG_CLEARED" in tit: tag = "[!!!] EVIDENCE DESTROYED (LOG WIPED)"; es_sospechoso = True
+                                
+                                if "LOG_CLEARED" in tit: 
+                                    tag = "[!!!] EVIDENCE DESTROYED (LOG WIPED)"
+                                    es_sospechoso = True
                                 elif "NEW_SERVICE" in tit:
-                                    if "AppData" in txt_bloque or "Temp" in txt_bloque: tag = "[!!!] KERNEL CHEAT DRIVER"; es_sospechoso = True
+                                    if "AppData" in txt_bloque or "Temp" in txt_bloque: 
+                                        tag = "[!!!] KERNEL CHEAT DRIVER"
+                                        es_sospechoso = True
                                     elif ".sys" in txt_bloque.lower():
                                         if "Intel" not in txt_bloque and "NVIDIA" not in txt_bloque:
                                             tag = "[WARN] SUSPICIOUS DRIVER LOAD"
                                             if modo == "Analizar Todo": es_sospechoso = True
-                                elif "DEFENDER_EXCLUSION" in tit: tag = "[WARN] ANTIVIRUS BYPASS PATH"; es_sospechoso = True
-                                elif "THREAT_FOUND" in tit: tag = "[!!!] MALWARE DETECTED"; es_sospechoso = True
+                                elif "DEFENDER_EXCLUSION" in tit: 
+                                    tag = "[WARN] ANTIVIRUS BYPASS PATH"
+                                    es_sospechoso = True
+                                elif "THREAT_FOUND" in tit: 
+                                    tag = "[!!!] MALWARE DETECTED"
+                                    es_sospechoso = True
                                 elif "PROCESS_STARTED" in tit:
-                                    if any(p in txt_bloque.lower() for p in palabras): tag = "[ALERTA] KEYWORD MATCH"; es_sospechoso = True
+                                    if any(p in txt_bloque.lower() for p in palabras): 
+                                        tag = "[ALERTA] KEYWORD MATCH"
+                                        es_sospechoso = True
+                                        
                                 if es_sospechoso or modo == "Analizar Todo":
                                     if tag: f.write(f"{tag}\n")
                                     for l in bloque: f.write(f"   {l}\n")
                                     f.write("   " + "-"*40 + "\n")
                                 bloque = []
-                        else: bloque.append(line)
+                        else: 
+                            bloque.append(line)
+                            
+                    # Procesar último bloque
                     if bloque:
                          if "LOG_CLEARED" in tit: f.write(f"[!!!] LOG WIPED\n")
                          for l in bloque: f.write(f"   {l}\n")
-            except Exception as e: f.write(f"   [ERROR] Failed to query events: {e}\n")
+                         
+            except Exception as e:
+                f.write(f"   [ERROR] Failed to query events: {e}\n")
             f.write("\n")
 
-def fase_process_hunter(palabras, modo):
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_eventos)), {'f13': {'active': True}})
+    except: pass
+
+
+# --- F14: PROCESS HUNTER (OPTIMIZADA) ---
+def fase_process_hunter(context, palabras, modo):
+    """OPTIMIZADA: Usa context.process_snapshot"""
     if config.CANCELAR_ESCANEO: return
     print(f"[14/24] Process Genealogy Hunter (Parent-Child Analysis) [LETHAL]...")
+    
+    # Asegurar ruta
+    if not config.reporte_process: config.reporte_process = "Process_Hunter.txt"
+    
     class PROCESSENTRY32(ctypes.Structure):
         _fields_ = [("dwSize", ctypes.c_ulong), ("cntUsage", ctypes.c_ulong), ("th32ProcessID", ctypes.c_ulong), ("th32DefaultHeapID", ctypes.c_ulong), ("th32ModuleID", ctypes.c_ulong), ("cntThreads", ctypes.c_ulong), ("th32ParentProcessID", ctypes.c_ulong), ("pcPriClassBase", ctypes.c_long), ("dwFlags", ctypes.c_ulong), ("szExeFile", ctypes.c_char * 260)]
+    
     TH32CS_SNAPPROCESS = 0x00000002
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     GENEALOGY_RULES = {"svchost.exe": ["services.exe"], "lsass.exe": ["wininit.exe"], "services.exe": ["wininit.exe"], "lsm.exe": ["wininit.exe"], "csrss.exe": ["smss.exe"], "wininit.exe": ["smss.exe"], "winlogon.exe": ["smss.exe"], "spoolsv.exe": ["services.exe"], "taskhostw.exe": ["svchost.exe", "explorer.exe", "services.exe"], "sihost.exe": ["svchost.exe"], "fontdrvhost.exe": ["wininit.exe", "winlogon.exe"], "dwm.exe": ["winlogon.exe"]}
@@ -1051,13 +1394,17 @@ def fase_process_hunter(palabras, modo):
     with open(config.reporte_process, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== PROCESS GENEALOGY & MASQUERADE HUNTER: {datetime.datetime.now()} ===\n")
         f.write("Strategy: Native Snapshot + Parent/Child Validation + Path Check\n\n")
+        
+        # --- PARTE 1: SNAPSHOT EN TIEMPO REAL ---
         f.write("--- LIVE PROCESS ANALYSIS ---\n")
         h_snap = ctypes.windll.kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
         pe32 = PROCESSENTRY32()
         pe32.dwSize = ctypes.sizeof(PROCESSENTRY32)
+        
         if h_snap == -1:
             f.write("[ERROR] Could not take process snapshot.\n")
             return
+            
         proc_map = {}
         if ctypes.windll.kernel32.Process32First(h_snap, ctypes.byref(pe32)):
             while True:
@@ -1067,12 +1414,15 @@ def fase_process_hunter(palabras, modo):
                 proc_map[pid] = {"name": name, "ppid": ppid, "path": "Unknown"}
                 if not ctypes.windll.kernel32.Process32Next(h_snap, ctypes.byref(pe32)): break
         ctypes.windll.kernel32.CloseHandle(h_snap)
+        
         buffer = ctypes.create_unicode_buffer(1024)
         count_susp = 0
+        
         for pid, info in proc_map.items():
             if config.CANCELAR_ESCANEO: break
             name = info["name"]
             ppid = info["ppid"]
+            
             h_proc = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
             real_path = ""
             if h_proc:
@@ -1081,13 +1431,18 @@ def fase_process_hunter(palabras, modo):
                     real_path = buffer.value.lower()
                     info["path"] = real_path
                 ctypes.windll.kernel32.CloseHandle(h_proc)
+                
             is_suspicious = False
             reasons = []
+            
+            # Check 1: Ruta legítima
             if name in LEGIT_PATHS:
                 expected_dir = LEGIT_PATHS[name]
                 if real_path and not real_path.startswith(expected_dir):
                     is_suspicious = True
                     reasons.append(f"FAKE PATH: Running from {real_path} (Expected: {expected_dir})")
+            
+            # Check 2: Genealogía (Padre correcto)
             if name in GENEALOGY_RULES:
                 parent_info = proc_map.get(ppid)
                 if parent_info:
@@ -1096,6 +1451,8 @@ def fase_process_hunter(palabras, modo):
                     if parent_name not in allowed_parents:
                         is_suspicious = True
                         reasons.append(f"BAD PARENT: Spawmed by '{parent_name}' (PID {ppid}). Expected: {allowed_parents}")
+            
+            # Check 3: Rutas peligrosas (Temp/AppData)
             if real_path and ("\\temp\\" in real_path or "\\appdata\\" in real_path or "\\downloads\\" in real_path):
                 if name.endswith(".exe"):
                     if any(k in name for k in ["loader", "client", "cheat", "inject"]):
@@ -1103,9 +1460,12 @@ def fase_process_hunter(palabras, modo):
                          reasons.append("Running from TEMP/APPDATA with suspicious name")
                     elif modo == "Analizar Todo":
                          reasons.append("Running from TEMP/APPDATA")
+                         
+            # Check 4: Palabras clave
             if any(p in name for p in palabras) or any(p in real_path for p in palabras):
                 is_suspicious = True
                 reasons.append("Keyword Match")
+                
             if is_suspicious:
                 count_susp += 1
                 f.write(f"[!!!] PROCESS ANOMALY: {name} (PID {pid})\n")
@@ -1116,7 +1476,10 @@ def fase_process_hunter(palabras, modo):
                 f.flush()
             elif modo == "Analizar Todo" and real_path:
                 f.write(f"[LIVE] {name} (PID {pid}) -> {real_path}\n")
+                
         if count_susp == 0: f.write("[OK] No process genealogy anomalies found.\n")
+        
+        # --- PARTE 2: PROCESOS MUERTOS ---
         f.write("\n--- DEAD PROCESSES (Last 45 mins) ---\n")
         try:
             ps = "Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4689} -ErrorAction SilentlyContinue | Where-Object {$_.TimeCreated -ge (Get-Date).AddMinutes(-45)} | Select-Object @{N='Time';E={$_.TimeCreated.ToString('HH:mm:ss')}}, @{N='Name';E={$_.Properties[0].Value}} | Format-Table -HideTableHeaders"
@@ -1128,12 +1491,23 @@ def fase_process_hunter(palabras, modo):
                     clean_l = l.strip()
                     if clean_l: unique_procs.add(clean_l)
                 for p in unique_procs:
-                     if modo == "Analizar Todo" or any(k in p.lower() for k in palabras): f.write(f"[DEAD] {p}\n"); f.flush()
+                     if modo == "Analizar Todo" or any(k in p.lower() for k in palabras): 
+                         f.write(f"[DEAD] {p}\n"); f.flush()
         except: pass
 
-def fase_game_cheat_hunter(palabras, modo):
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_process)), {'f14': {'active': True}})
+    except: pass
+
+# --- F15: GAME CHEAT HUNTER (OPTIMIZADA) ---
+def fase_game_cheat_hunter(context, palabras, modo):
+    """OPTIMIZADA: Usa context.file_snapshot"""
     if config.CANCELAR_ESCANEO: return
     print("[15/25] Game Cheat Hunter (SURGICAL PRECISION | ZERO FP)")
+    
+    # Asegurar ruta
+    if not config.reporte_game: config.reporte_game = "Game_Cheat_Hunter.txt"
+    
     yara_rules = config.GLOBAL_YARA_RULES
     yara_active = False
     try:
@@ -1147,123 +1521,120 @@ def fase_game_cheat_hunter(palabras, modo):
             yara_rules = yara.compile(filepath=ruta_reglas)
             yara_active = True
         except: yara_rules = None
+
     INTERNAL_BLACKLIST = ["cheat", "hack", "injector", "loader", "spoofer", "aimbot", "esp", "imgui", "hook", "dumper", "bypass", "wesh", "kero", "skinchanger", "readwritememory", "kernel"]
     target_exts = ('.exe', '.dll', '.sys', '.bin', '.dat')
     MAX_SIZE_MB = 150 
     READ_LIMIT_MB = 15
-    user = os.environ.get("USERPROFILE", "C:\\")
-    hot_paths = [os.path.join(user, "Desktop"), os.path.join(user, "Downloads"), os.path.join(user, "AppData", "Local", "Temp"), os.path.join(user, "AppData", "Roaming")]
-    onedrive = os.path.join(user, "OneDrive")
-    if os.path.exists(onedrive): hot_paths += [os.path.join(onedrive, "Desktop"), os.path.join(onedrive, "Downloads")]
+    
+    detections = 0
+    scanned_count = 0
 
     with open(config.reporte_game, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== GAME CHEAT HUNTER (SURGICAL MODE) ===\n")
-        f.write(f"Start: {datetime.datetime.now()}\n")
-        f.write(f"Strategy: Ignore Signed Files (unless inside TEMP or Blacklisted).\n\n")
-        total_scanned = 0
-        detections = 0
-        for target_dir in hot_paths:
-            if not os.path.exists(target_dir): continue
-            f.write(f"--- Scanning: {target_dir} ---\n")
-            is_temp_folder = "temp" in target_dir.lower()
+        f.write(f"=== GAME CHEAT HUNTER (MEMORY SNAPSHOT): {datetime.datetime.now()} ===\n")
+        f.write(f"Strategy: Using Context Snapshot + YARA + Entropy\n\n")
+        
+        # Usar snapshot en memoria en lugar de os.walk lento
+        for file_data in context.file_snapshot:
+            if config.CANCELAR_ESCANEO: break
+            
+            path = file_data['path']
+            name = file_data['name']
+            ext = file_data['ext']
+            size = file_data['size']
+            
+            if not ext in target_exts: continue
+            if size > MAX_SIZE_MB * 1024 * 1024: continue
+            
+            scanned_count += 1
+            suspicious = False
+            reasons = []
+            metadata_dirty = False
+            is_signed = False
+            
+            # 1. Metadata Check
             try:
-                with os.scandir(target_dir) as entries:
-                    for entry in entries:
-                        if config.CANCELAR_ESCANEO: break
-                        try:
-                            if not entry.is_file(): continue
-                            fname_lower = entry.name.lower()
-                            if not fname_lower.endswith(target_exts): continue
-                            size = entry.stat().st_size
-                            if size > MAX_SIZE_MB * 1024 * 1024: continue
-                            total_scanned += 1
-                            suspicious = False
-                            reasons = []
-                            entropy_val = 0
-                            is_signed = False
-                            metadata_dirty = False
-                            try:
-                                pe = pefile.PE(entry.path, fast_load=True)
-                                sec_dir = pe.OPTIONAL_HEADER.DATA_DIRECTORY[4]
-                                if sec_dir.VirtualAddress != 0 and sec_dir.Size > 0: is_signed = True
-                                if hasattr(pe, 'FileInfo'):
-                                    for info in pe.FileInfo:
-                                        if hasattr(info, 'StringTable'):
-                                            for st in info.StringTable:
-                                                for k, v in st.entries.items():
-                                                    val = v.decode(errors="ignore").lower()
-                                                    for bad in INTERNAL_BLACKLIST:
-                                                        if bad in val:
-                                                            metadata_dirty = True
-                                                            reasons.append(f"Blacklisted Metadata: {val}")
-                                pe.close()
-                            except: pass
-                            should_scan = False
-                            if metadata_dirty: should_scan = True
-                            elif not is_signed: should_scan = True
-                            elif is_signed and is_temp_folder: should_scan = True
-                            if not should_scan: continue
-                            try:
-                                with open(entry.path, "rb") as bf:
-                                    data_start = bf.read(READ_LIMIT_MB * 1024 * 1024)
-                                    data_overlay = b""
-                                    if size > 2 * 1024 * 1024:
-                                        try:
-                                            bf.seek(-2 * 1024 * 1024, 2)
-                                            data_overlay = bf.read()
-                                        except: pass
-                            except: continue
-                            entropy_val = calculate_entropy(data_start)
-                            threshold = 7.4 if is_signed else 7.25
-                            if entropy_val > threshold:
-                                suspicious = True
-                                if is_signed: reasons.append(f"High Entropy inside TEMP (Signed) ({entropy_val:.2f})")
-                                else: reasons.append(f"High Entropy & Unsigned ({entropy_val:.2f})")
-                            if data_overlay:
-                                ent_overlay = calculate_entropy(data_overlay)
-                                if ent_overlay > 7.45:
-                                    suspicious = True
-                                    reasons.append(f"Packed Overlay Detected ({ent_overlay:.2f})")
-                            if yara_active:
-                                try:
-                                    matches = yara_rules.match(data=data_start)
-                                    if not matches and data_overlay: matches = yara_rules.match(data=data_overlay)
-                                    if matches:
-                                        suspicious = True
-                                        rules = [m.rule for m in matches]
-                                        reasons.append(f"YARA MATCH: {rules}")
-                                except: pass
-                            if suspicious:
-                                detections += 1
-                                tag = "[!!!]"
-                                if "YARA" in str(reasons) or metadata_dirty: tag = "[☢] CONFIRMED"
-                                f.write(f"{tag} THREAT DETECTED: {entry.name}\n")
-                                f.write(f"      Path: {entry.path}\n")
-                                f.write(f"      Status: {'SIGNED (Risky Location/Meta)' if is_signed else 'UNSIGNED'}\n")
-                                f.write(f"      Entropy: {entropy_val:.2f}\n")
-                                for r in reasons: f.write(f"      - {r}\n")
-                                f.write("-" * 55 + "\n")
-                                f.flush()
-                        except: continue
+                pe = pefile.PE(path, fast_load=True)
+                sec_dir = pe.OPTIONAL_HEADER.DATA_DIRECTORY[4]
+                if sec_dir.VirtualAddress != 0 and sec_dir.Size > 0: is_signed = True
+                
+                if hasattr(pe, 'FileInfo'):
+                    for info in pe.FileInfo:
+                        if hasattr(info, 'StringTable'):
+                            for st in info.StringTable:
+                                for k, v in st.entries.items():
+                                    val = v.decode(errors="ignore").lower()
+                                    for bad in INTERNAL_BLACKLIST:
+                                        if bad in val:
+                                            metadata_dirty = True
+                                            reasons.append(f"Blacklisted Metadata: {val}")
+                pe.close()
             except: pass
-        f.write(f"\nScan finished. Detections: {detections}\n")
-    print("[✓] Game Cheat Hunter completed")
+            
+            should_scan = False
+            if metadata_dirty: should_scan = True
+            elif not is_signed: should_scan = True
+            elif is_signed and ("temp" in path.lower() or "appdata" in path.lower()): should_scan = True
+            
+            if not should_scan: continue
+            
+            # 2. Deep Scan
+            try:
+                with open(path, "rb") as bf:
+                    data_start = bf.read(READ_LIMIT_MB * 1024 * 1024)
+                    
+                    # Entropy Check
+                    entropy_val = calculate_entropy(data_start)
+                    threshold = 7.4 if is_signed else 7.25
+                    if entropy_val > threshold:
+                        suspicious = True
+                        reasons.append(f"High Entropy ({entropy_val:.2f})")
+                    
+                    # YARA Check
+                    if yara_active:
+                        try:
+                            matches = yara_rules.match(data=data_start)
+                            if matches:
+                                suspicious = True
+                                rules = [m.rule for m in matches]
+                                reasons.append(f"YARA MATCH: {rules}")
+                        except: pass
+                        
+            except: continue
+            
+            if suspicious:
+                detections += 1
+                tag = "[!!!]"
+                if "YARA" in str(reasons) or metadata_dirty: tag = "[☢] CONFIRMED"
+                
+                f.write(f"{tag} THREAT DETECTED: {name}\n")
+                f.write(f"      Path: {path}\n")
+                f.write(f"      Status: {'SIGNED' if is_signed else 'UNSIGNED'}\n")
+                f.write(f"      Reasons: {', '.join(reasons)}\n")
+                f.write("-" * 55 + "\n")
+                
+        f.write(f"\nScan finished. Scanned: {scanned_count} | Detections: {detections}\n")
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_game)), {'f15': {'active': True}})
+    except: pass
+
+
+# --- F16: NUCLEAR TRACES ---
 def fase_nuclear_traces(palabras, modo):
+    if config.CANCELAR_ESCANEO: return
     print(f"[16/24] Nuclear Traces (Pipes & BAM with Timestamps) [DEFINITIVE]...")
-    try:
-        base_path = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
-        folder_name = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
-    except:
-        base_path = os.path.abspath(".")
-        folder_name = "Resultados_SS"
-    config.reporte_nuclear = os.path.join(base_path, folder_name, "Nuclear_Traces_Detection.txt")
+    
+    # Asegurar ruta
+    if not config.reporte_nuclear: config.reporte_nuclear = "Nuclear_Traces.txt"
+    
     now = datetime.datetime.now()
     limit_time = now - datetime.timedelta(hours=4)
 
     with open(config.reporte_nuclear, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== NUCLEAR TRACES: {now.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
         f.write("Target: Active Pipes & RECENT BAM Execution (Last 4 Hours)\n\n")
+        
         suspicious_pipes = ["cheat", "hack", "injector", "loader", "esp", "aim", "battleye", "easyanticheat", "faceit", "esea", "vanguard", "overlay", "hook", "auth"]
         f.write("--- LIVE NAMED PIPES ---\n")
         try:
@@ -1299,9 +1670,11 @@ def fase_nuclear_traces(palabras, modo):
                                         exec_time = filetime_to_dt(filetime_int)
                                     else: exec_time = None
                                 except: exec_time = None
+                                
                                 if "\\Device\\HarddiskVolume" in exe_path: 
                                     exe_path = exe_path.replace("\\Device\\HarddiskVolume", "Volume_")
                                 exe_lower = exe_path.lower()
+                                
                                 is_recent = False
                                 if exec_time:
                                     if exec_time > limit_time:
@@ -1309,6 +1682,7 @@ def fase_nuclear_traces(palabras, modo):
                                         time_str = exec_time.strftime('%H:%M:%S')
                                     else: continue 
                                 else: time_str = "Unknown Time"
+                                
                                 hit = False
                                 reason = ""
                                 if "temp" in exe_lower or "appdata" in exe_lower:
@@ -1321,6 +1695,7 @@ def fase_nuclear_traces(palabras, modo):
                                     hit = True; reason = "External Drive / Hidden Volume"
                                 if any(p in exe_lower for p in palabras) or any(s in exe_lower for s in ["aimbot", "esp", "wallhack", "clicker"]): 
                                     hit = True; reason = "Keyword Match"
+                                
                                 if hit and is_recent:
                                     f.write(f"[!!!] EXECUTION PROVEN: {time_str} | {exe_path}\n")
                                     f.write(f"      Reason: {reason}\n")
@@ -1328,53 +1703,97 @@ def fase_nuclear_traces(palabras, modo):
                             if hits == 0: f.write(f"[INFO] SID {sid[:8]}... Clean in last 4 hours.\n")
                     except Exception as e_inner: pass
         except Exception as e: f.write(f"Error accessing BAM registry: {e}\n")
+    
     print(f"   --> Reporte Nuclear generado: {config.reporte_nuclear}")
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_nuclear)), {'f16': {'active': True}})
+    except: pass
+    
+# --- F17: KERNEL HUNTER ---
 def fase_kernel_hunter(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[17/24] Kernel Hunter (Drivers & Boot config) [NUCLEAR]...")
+    
+    # Asegurar ruta
+    if not config.reporte_kernel: config.reporte_kernel = "Kernel_Anomalies.txt"
+    
     vuln_drivers = ["iqvw64e.sys", "iqvw32e.sys", "capcom.sys", "gdrv.sys", "atszio.sys", "winio.sys", "ene.sys", "enetechio.sys", "msio64.sys", "glckio2.sys", "inpoutx64.sys", "rzpnk.sys"]
+    
     with open(config.reporte_kernel, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== KERNEL HUNTER & ANOMALIES: {datetime.datetime.now()} ===\n\n"); f.write("--- BOOT CONFIGURATION (Test Signing Check) ---\n")
+        f.write(f"=== KERNEL HUNTER & ANOMALIES: {datetime.datetime.now()} ===\n\n")
+        
+        f.write("--- BOOT CONFIGURATION (Test Signing Check) ---\n")
         try:
-            proc = subprocess.Popen('bcdedit /enum {current}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000); out, _ = proc.communicate(); danger_flags = False
+            # Usar creationflags=0x08000000 para ocultar la ventana de consola
+            proc = subprocess.Popen('bcdedit /enum {current}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000)
+            out, _ = proc.communicate()
+            danger_flags = False
             if out:
                 lines = out.splitlines()
                 for l in lines:
                     low_l = l.lower()
-                    if "testsigning" in low_l and "yes" in low_l: f.write("[!!!] CRITICAL: WINDOWS TEST SIGNING IS ON (Permite drivers de hacks no firmados)\n"); danger_flags = True
-                    if "debug" in low_l and "yes" in low_l: f.write("[!!!] CRITICAL: KERNEL DEBUGGING IS ON (Usado para manipular memoria)\n"); danger_flags = True
-                    if "nointegritychecks" in low_l and "yes" in low_l: f.write("[!!!] CRITICAL: INTEGRITY CHECKS DISABLED\n"); danger_flags = True
+                    if "testsigning" in low_l and "yes" in low_l: 
+                        f.write("[!!!] CRITICAL: WINDOWS TEST SIGNING IS ON (Permite drivers de hacks no firmados)\n")
+                        danger_flags = True
+                    if "debug" in low_l and "yes" in low_l: 
+                        f.write("[!!!] CRITICAL: KERNEL DEBUGGING IS ON (Usado para manipular memoria)\n")
+                        danger_flags = True
+                    if "nointegritychecks" in low_l and "yes" in low_l: 
+                        f.write("[!!!] CRITICAL: INTEGRITY CHECKS DISABLED\n")
+                        danger_flags = True
             if not danger_flags: f.write("[OK] Secure Boot Integrity appears normal.\n")
         except: f.write("Error reading BCD.\n")
+        
         f.write("\n--- LOADED KERNEL DRIVERS SCAN ---\n")
         try:
-            cmd = 'driverquery /v /fo csv'; proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000); out, _ = proc.communicate()
+            cmd = 'driverquery /v /fo csv'
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000)
+            out, _ = proc.communicate()
             if out:
                 lines = out.splitlines()
                 for l in lines:
                     if not l.strip(): continue
                     low_l = l.lower()
+                    # Detectar drivers vulnerables
                     for vd in vuln_drivers:
-                        if vd in low_l: f.write(f"[!!!] VULNERABLE DRIVER DETECTED: {l.strip()}\n      (Posible ataque KDMapper/Overlay Kernel)\n"); f.flush()
-                    if "users\\" in low_l or "appdata" in low_l or "temp" in low_l or "downloads" in low_l: clean_line = l.replace('"', '').strip(); f.write(f"[!!!] MALICIOUS DRIVER PATH: {clean_line}\n      (Driver cargando desde espacio de usuario)\n"); f.flush()
+                        if vd in low_l: 
+                            f.write(f"[!!!] VULNERABLE DRIVER DETECTED: {l.strip()}\n      (Posible ataque KDMapper/Overlay Kernel)\n")
+                            f.flush()
+                    # Detectar drivers en rutas de usuario
+                    if "users\\" in low_l or "appdata" in low_l or "temp" in low_l or "downloads" in low_l: 
+                        clean_line = l.replace('"', '').strip()
+                        f.write(f"[!!!] MALICIOUS DRIVER PATH: {clean_line}\n      (Driver cargando desde espacio de usuario)\n")
+                        f.flush()
+                    # Modo Analizar Todo
                     if modo == "Analizar Todo":
-                        if "microsoft" not in low_l and "intel" not in low_l and "nvidia" not in low_l and "amd" not in low_l and "realtek" not in low_l: f.write(f"[UNKNOWN DRIVER] {l[:100]}...\n"); f.flush()
+                        if "microsoft" not in low_l and "intel" not in low_l and "nvidia" not in low_l and "amd" not in low_l and "realtek" not in low_l: 
+                            f.write(f"[UNKNOWN DRIVER] {l[:100]}...\n")
+                            f.flush()
         except Exception as e: f.write(f"Error listing drivers: {e}\n")
+        
         f.write("\n--- NETWORK TAMPERING (Hosts File) ---\n")
         hosts_path = r"C:\Windows\System32\drivers\etc\hosts"
         try:
             if os.path.exists(hosts_path):
                 with open(hosts_path, "r", encoding="utf-8", errors="ignore") as hf:
-                    lines = hf.readlines(); found_tamper = False
+                    lines = hf.readlines()
+                    found_tamper = False
                     for line in lines:
                         line = line.strip()
                         if not line or line.startswith("#"): continue
                         bad_domains = ["vac", "battleye", "easyanticheat", "riot", "vanguard", "auth", "license"]
-                        if any(b in line.lower() for b in bad_domains): f.write(f"[!!!] HOSTS TAMPERING: {line}\n"); found_tamper = True
+                        if any(b in line.lower() for b in bad_domains): 
+                            f.write(f"[!!!] HOSTS TAMPERING: {line}\n")
+                            found_tamper = True
                     if not found_tamper: f.write("[OK] Hosts file clean.\n")
         except: pass
-        
+
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_kernel)), {'f17': {'active': True}})
+    except: pass
+
+# --- F18: DNA & PREFETCH ---
 def fase_dna_prefetch(palabras, modo):
     """
     FASE 18: DNA & PREFETCH FORENSICS (Decompression + Deep Scan).
@@ -1442,10 +1861,11 @@ def fase_dna_prefetch(palabras, modo):
     suspicious_imports = [b"WriteProcessMemory", b"CreateRemoteThread", b"VirtualAllocEx", b"OpenProcess", 
                           b"LdrLoadDll", b"NtCreateThreadEx", b"SetWindowsHookExA", b"Wow64Transition"]
     
+    user = os.environ.get("USERPROFILE", "C:\\")
     hot_paths = [
-        os.path.join(os.environ["USERPROFILE"], "Downloads"),
-        os.path.join(os.environ["USERPROFILE"], "Desktop"),
-        os.path.join(os.environ["USERPROFILE"], "AppData", "Local", "Temp")
+        os.path.join(user, "Downloads"),
+        os.path.join(user, "Desktop"),
+        os.path.join(user, "AppData", "Local", "Temp")
     ]
     
     deep_scan_targets = ["csgo", "discord", "explorer", "steam", "dota", "valorant", "javaw", "minecraft", "anydesk", "teamviewer"]
@@ -1527,28 +1947,52 @@ def fase_dna_prefetch(palabras, modo):
         else: f.write("[ERROR] Prefetch folder not found (Admin required).\n")
         
         if pf_hits == 0: f.write("[OK] No suspicious prefetch traces found.\n")
-    print("[✓] DNA & Prefetch completed")
+    
+    # INTEGRACIÓN HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_dna)), {'f18': {'active': True}})
+    except: pass
 
+# --- F19: NETWORK HUNTER ---
 def fase_network_hunter(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[19/24] Network Hunter (Connections & History) [LIVE+FORENSIC]...")
+    
+    # Asegurar ruta
+    if not config.reporte_network: config.reporte_network = "Network_Anomalies.txt"
+
     with open(config.reporte_network, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== NETWORK & DOWNLOAD FORENSICS: {datetime.datetime.now()} ===\n\n"); safe_ports = ["80", "443", "53", "135", "139", "445"]
+        f.write(f"=== NETWORK & DOWNLOAD FORENSICS: {datetime.datetime.now()} ===\n\n")
+        safe_ports = ["80", "443", "53", "135", "139", "445"]
         f.write("--- LIVE CONNECTIONS (Netstat) ---\n")
         try:
-            proc = subprocess.Popen('netstat -ano', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000); out, _ = proc.communicate()
+            proc = subprocess.Popen('netstat -ano', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000)
+            out, _ = proc.communicate()
             if out:
                 lines = out.splitlines()
                 for l in lines:
                     if "TCP" not in l and "UDP" not in l: continue
                     parts = l.split()
                     if len(parts) < 4: continue
-                    proto = parts[0]; remote = parts[2]; state = parts[3] if "TCP" in proto else "UDP"; pid = parts[-1] if "TCP" in proto else parts[-1]
+                    proto = parts[0]
+                    remote = parts[2]
+                    state = parts[3] if "TCP" in proto else "UDP"
+                    pid = parts[-1] if "TCP" in proto else parts[-1]
+                    
                     if "127.0.0.1" in remote or "[::]" in remote or "*:*" in remote or "0.0.0.0" in remote: continue
-                    port = remote.split(":")[-1]; is_suspicious = False; reason = ""
-                    if port not in safe_ports and state == "ESTABLISHED": is_suspicious = True; reason = f"Non-Standard Port {port}"
-                    if is_suspicious or modo == "Analizar Todo": f.write(f"{'[!!!] ' if is_suspicious else '      '}{proto} {remote} {state} PID:{pid} {reason}\n"); f.flush()
+                    
+                    port = remote.split(":")[-1]
+                    is_suspicious = False
+                    reason = ""
+                    if port not in safe_ports and state == "ESTABLISHED": 
+                        is_suspicious = True
+                        reason = f"Non-Standard Port {port}"
+                    
+                    if is_suspicious or modo == "Analizar Todo":
+                        marker = "[!!!] " if is_suspicious else "      "
+                        f.write(f"{marker}{proto} {remote} {state} PID:{pid} {reason}\n")
+                        f.flush()
         except: f.write("Error running netstat.\n")
+        
         f.write("\n--- POWERSHELL DOWNLOAD HISTORY ---\n")
         history_path = os.path.join(os.getenv('APPDATA'), r"Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt")
         if os.path.exists(history_path):
@@ -1558,26 +2002,41 @@ def fase_network_hunter(palabras, modo):
                     for line in lines:
                         line = line.strip()
                         line_low = line.lower()
-                        if "http://" in line_low or "https://" in line_low or "wget" in line_low or "curl" in line_low or "bits" in line_low:
-                            if "apache" not in line_low and "firewall" not in line_low and "policy" not in line_low and "allow" not in line_low:
-                                f.write(f"[HISTORY TRACE] {line}\n"); f.flush()
+                        if any(x in line_low for x in ["http://", "https://", "wget", "curl", "bits"]):
+                            if not any(x in line_low for x in ["apache", "firewall", "policy", "allow"]):
+                                f.write(f"[HISTORY TRACE] {line}\n")
+                                f.flush()
             except: f.write("Error reading PowerShell history.\n")
         else: f.write("No PowerShell history found.\n")
+        
         f.write("\n--- BITS TRANSFER HISTORY (Hidden Downloads) ---\n")
         try:
-             cmd_bits = "Get-BitsTransfer -AllUsers | Select-Object -Property JobId, CreationTime, State, FileList | Format-List"
-             proc_b = subprocess.Popen(["powershell", "-NoProfile", "-Command", cmd_bits], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=0x08000000)
-             out_b, _ = proc_b.communicate()
-             if out_b.strip(): f.write(out_b); f.flush()
-             else: f.write("No active background transfers found.\n")
+            cmd_bits = "Get-BitsTransfer -AllUsers | Select-Object -Property JobId, CreationTime, State, FileList | Format-List"
+            proc_b = subprocess.Popen(["powershell", "-NoProfile", "-Command", cmd_bits], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=0x08000000)
+            out_b, _ = proc_b.communicate()
+            if out_b.strip(): 
+                f.write(out_b)
+                f.flush()
+            else: f.write("No active background transfers found.\n")
         except: pass
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_network)), {'f19': {'active': True}})
+    except: pass
+
+
+# --- F20: TOXIC LNK ---
 def fase_toxic_lnk(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[20/24] Toxic & LNK Hunter (Anti-Bypass) [FORENSIC]...")
+    
+    # Asegurar ruta
+    if not config.reporte_toxic: config.reporte_toxic = "Toxic_LNK.txt"
+
     with open(config.reporte_toxic, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== TOXIC LNK & MODULE SCAN: {datetime.datetime.now()} ===\n")
         f.write("Searching for: LNKs pointing to deleted files (Evidence Tampering) & Toxic Modules in RAM\n\n")
+        
         f.write("--- ORPHANED SHORTCUTS (LNK) ---\n")
         recent_path = os.path.join(os.getenv('APPDATA'), r"Microsoft\Windows\Recent")
         if os.path.exists(recent_path):
@@ -1603,17 +2062,22 @@ def fase_toxic_lnk(palabras, modo):
                         if "|" in line:
                             parts = line.split("|")
                             if len(parts) >= 3:
-                                type_lnk = parts[0]; name = parts[1]; target = parts[2]
+                                type_lnk = parts[0]
+                                name = parts[1]
+                                target = parts[2]
                                 is_suspicious = False
+                                
                                 if type_lnk == "BROKEN":
-                                    if target.lower().endswith(".exe") or target.lower().endswith(".bat"): is_suspicious = True
+                                    if target.lower().endswith((".exe", ".bat")): is_suspicious = True
                                 if any(p in target.lower() for p in palabras): is_suspicious = True
+                                
                                 if is_suspicious or modo == "Analizar Todo":
                                     marker = "[!!!]" if is_suspicious else "[INFO]"
                                     desc = "DELETED FILE EVIDENCE" if type_lnk == "BROKEN" else "Risky Location"
-                                    f.write(f"{marker} {name} -> {target} ({desc})\n"); f.flush()
-                else: f.write("No orphaned shortcuts found.\n")
+                                    f.write(f"{marker} {name} -> {target} ({desc})\n")
+                                    f.flush()
             except Exception as e: f.write(f"Error scanning LNKs: {e}\n")
+            
         f.write("\n--- TOXIC MODULES IN RAM ---\n")
         try:
             cmd = 'tasklist /m /fo csv'
@@ -1624,15 +2088,170 @@ def fase_toxic_lnk(palabras, modo):
                 for line in lines:
                     if "Image Name" in line: continue
                     if any(k in line.lower() for k in ["cheat", "inject", "hook", "hack"]):
-                        f.write(f"[!!!] TOXIC MODULE: {line[:100]}...\n"); f.flush()
+                        f.write(f"[!!!] TOXIC MODULE: {line[:100]}...\n")
+                        f.flush()
         except: pass
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_toxic)), {'f20': {'active': True}})
+    except: pass
+
+# --- F19: NETWORK HUNTER ---
+def fase_network_hunter(palabras, modo):
+    if config.CANCELAR_ESCANEO: return
+    print(f"[19/24] Network Hunter (Connections & History) [LIVE+FORENSIC]...")
+    
+    # Asegurar ruta
+    if not config.reporte_network: config.reporte_network = "Network_Anomalies.txt"
+
+    with open(config.reporte_network, "w", encoding="utf-8", buffering=1) as f:
+        f.write(f"=== NETWORK & DOWNLOAD FORENSICS: {datetime.datetime.now()} ===\n\n")
+        safe_ports = ["80", "443", "53", "135", "139", "445"]
+        f.write("--- LIVE CONNECTIONS (Netstat) ---\n")
+        try:
+            proc = subprocess.Popen('netstat -ano', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, creationflags=0x08000000)
+            out, _ = proc.communicate()
+            if out:
+                lines = out.splitlines()
+                for l in lines:
+                    if "TCP" not in l and "UDP" not in l: continue
+                    parts = l.split()
+                    if len(parts) < 4: continue
+                    proto = parts[0]
+                    remote = parts[2]
+                    state = parts[3] if "TCP" in proto else "UDP"
+                    pid = parts[-1] if "TCP" in proto else parts[-1]
+                    
+                    if "127.0.0.1" in remote or "[::]" in remote or "*:*" in remote or "0.0.0.0" in remote: continue
+                    
+                    port = remote.split(":")[-1]
+                    is_suspicious = False
+                    reason = ""
+                    if port not in safe_ports and state == "ESTABLISHED": 
+                        is_suspicious = True
+                        reason = f"Non-Standard Port {port}"
+                    
+                    if is_suspicious or modo == "Analizar Todo":
+                        marker = "[!!!] " if is_suspicious else "      "
+                        f.write(f"{marker}{proto} {remote} {state} PID:{pid} {reason}\n")
+                        f.flush()
+        except: f.write("Error running netstat.\n")
+        
+        f.write("\n--- POWERSHELL DOWNLOAD HISTORY ---\n")
+        history_path = os.path.join(os.getenv('APPDATA'), r"Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt")
+        if os.path.exists(history_path):
+            try:
+                with open(history_path, "r", encoding="utf-8", errors="ignore") as h:
+                    lines = h.readlines()
+                    for line in lines:
+                        line = line.strip()
+                        line_low = line.lower()
+                        if any(x in line_low for x in ["http://", "https://", "wget", "curl", "bits"]):
+                            if not any(x in line_low for x in ["apache", "firewall", "policy", "allow"]):
+                                f.write(f"[HISTORY TRACE] {line}\n")
+                                f.flush()
+            except: f.write("Error reading PowerShell history.\n")
+        else: f.write("No PowerShell history found.\n")
+        
+        f.write("\n--- BITS TRANSFER HISTORY (Hidden Downloads) ---\n")
+        try:
+            cmd_bits = "Get-BitsTransfer -AllUsers | Select-Object -Property JobId, CreationTime, State, FileList | Format-List"
+            proc_b = subprocess.Popen(["powershell", "-NoProfile", "-Command", cmd_bits], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=0x08000000)
+            out_b, _ = proc_b.communicate()
+            if out_b.strip(): 
+                f.write(out_b)
+                f.flush()
+            else: f.write("No active background transfers found.\n")
+        except: pass
+
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_network)), {'f19': {'active': True}})
+    except: pass
+
+
+# --- F20: TOXIC LNK ---
+def fase_toxic_lnk(palabras, modo):
+    if config.CANCELAR_ESCANEO: return
+    print(f"[20/24] Toxic & LNK Hunter (Anti-Bypass) [FORENSIC]...")
+    
+    # Asegurar ruta
+    if not config.reporte_toxic: config.reporte_toxic = "Toxic_LNK.txt"
+
+    with open(config.reporte_toxic, "w", encoding="utf-8", buffering=1) as f:
+        f.write(f"=== TOXIC LNK & MODULE SCAN: {datetime.datetime.now()} ===\n")
+        f.write("Searching for: LNKs pointing to deleted files (Evidence Tampering) & Toxic Modules in RAM\n\n")
+        
+        f.write("--- ORPHANED SHORTCUTS (LNK) ---\n")
+        recent_path = os.path.join(os.getenv('APPDATA'), r"Microsoft\Windows\Recent")
+        if os.path.exists(recent_path):
+            try:
+                ps_script = f"""
+                Get-ChildItem -Path '{recent_path}' -Filter *.lnk | ForEach-Object {{
+                    try {{
+                        $sh = New-Object -ComObject WScript.Shell
+                        $lnk = $sh.CreateShortcut($_.FullName)
+                        $target = $lnk.TargetPath
+                        if ($target -and (Test-Path $target) -eq $false) {{
+                            Write-Output "BROKEN|$($_.Name)|$target"
+                        }} elseif ($target -match 'Temp|Downloads') {{
+                             Write-Output "RISKY|$($_.Name)|$target"
+                        }}
+                    }} catch {{}}
+                }}
+                """
+                proc = subprocess.Popen(["powershell", "-NoProfile", "-Command", ps_script], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=0x08000000)
+                out, _ = proc.communicate()
+                if out:
+                    for line in out.splitlines():
+                        if "|" in line:
+                            parts = line.split("|")
+                            if len(parts) >= 3:
+                                type_lnk = parts[0]
+                                name = parts[1]
+                                target = parts[2]
+                                is_suspicious = False
+                                
+                                if type_lnk == "BROKEN":
+                                    if target.lower().endswith((".exe", ".bat")): is_suspicious = True
+                                if any(p in target.lower() for p in palabras): is_suspicious = True
+                                
+                                if is_suspicious or modo == "Analizar Todo":
+                                    marker = "[!!!]" if is_suspicious else "[INFO]"
+                                    desc = "DELETED FILE EVIDENCE" if type_lnk == "BROKEN" else "Risky Location"
+                                    f.write(f"{marker} {name} -> {target} ({desc})\n")
+                                    f.flush()
+            except Exception as e: f.write(f"Error scanning LNKs: {e}\n")
+            
+        f.write("\n--- TOXIC MODULES IN RAM ---\n")
+        try:
+            cmd = 'tasklist /m /fo csv'
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=0x08000000)
+            out, _ = proc.communicate()
+            if out:
+                lines = out.splitlines()
+                for line in lines:
+                    if "Image Name" in line: continue
+                    if any(k in line.lower() for k in ["cheat", "inject", "hook", "hack"]):
+                        f.write(f"[!!!] TOXIC MODULE: {line[:100]}...\n")
+                        f.flush()
+        except: pass
+
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_toxic)), {'f20': {'active': True}})
+    except: pass
+
+# --- F21: GHOST TRAILS ---
 def fase_ghost_trails(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[21/24] Ghost Trails (Registry MRU & ShellBags) [ANTI-CLEANER]...")
+    
+    # Asegurar ruta
+    if not config.reporte_ghost: config.reporte_ghost = "Ghost_Trails.txt"
+
     with open(config.reporte_ghost, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== GHOST TRAILS & REGISTRY MRU: {datetime.datetime.now()} ===\n")
         f.write("Searching for: Evidence of files accessed via Dialogs, even if deleted.\n\n")
+        
         f.write("--- OPENSAVEPIDLMRU (File Dialog History) ---\n")
         mru_path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\OpenSavePidlMRU"
         try:
@@ -1652,10 +2271,14 @@ def fase_ghost_trails(palabras, modo):
                                         for p in paths:
                                             if len(p) > 5:
                                                 is_susp = any(w in p.lower() for w in palabras)
-                                                if is_susp or modo == "Analizar Todo": f.write(f"[{'!!!' if is_susp else 'INFO'}] OPENED: {p}\n"); f.flush()
+                                                if is_susp or modo == "Analizar Todo": 
+                                                    marker = "!!!" if is_susp else "INFO"
+                                                    f.write(f"[{marker}] OPENED: {p}\n")
+                                                    f.flush()
                                     except: pass
                     except: pass
         except: f.write("Could not access OpenSavePidlMRU.\n")
+        
         f.write("\n--- MUICACHE (Application Names) ---\n")
         mui_path = r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
         try:
@@ -1664,16 +2287,30 @@ def fase_ghost_trails(palabras, modo):
                     name, val, _ = winreg.EnumValue(key, i)
                     if ".exe" in name.lower():
                          is_susp = any(w in name.lower() for w in palabras)
-                         if is_susp or modo == "Analizar Todo": f.write(f"[{'!!!' if is_susp else 'INFO'}] RAN: {name}\n"); f.flush()
+                         if is_susp or modo == "Analizar Todo": 
+                             marker = "!!!" if is_susp else "INFO"
+                             f.write(f"[{marker}] RAN: {name}\n")
+                             f.flush()
         except: pass
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_ghost)), {'f21': {'active': True}})
+    except: pass
+
+
+# --- F22: MEMORY ANOMALY ---
 def fase_memory_anomaly(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[22/24] Memory Anomaly Hunter (VAD + Orphan Threads) [GOD-TIER]...")
+    
+    # Asegurar ruta
+    if not config.reporte_memory: config.reporte_memory = "Memory_Injection_Report.txt"
+    
     class MODULEENTRY32(ctypes.Structure):
         _fields_ = [("dwSize", ctypes.c_ulong), ("th32ModuleID", ctypes.c_ulong), ("th32ProcessID", ctypes.c_ulong), ("GlblcntUsage", ctypes.c_ulong), ("ProccntUsage", ctypes.c_ulong), ("modBaseAddr", ctypes.c_void_p), ("modBaseSize", ctypes.c_ulong), ("hModule", ctypes.c_void_p), ("szModule", ctypes.c_char * 256), ("szExePath", ctypes.c_char * 260)]
     class THREADENTRY32(ctypes.Structure):
         _fields_ = [("dwSize", ctypes.c_ulong), ("cntUsage", ctypes.c_ulong), ("th32ThreadID", ctypes.c_ulong), ("th32OwnerProcessID", ctypes.c_ulong), ("tpBasePri", ctypes.c_long), ("tpDeltaPri", ctypes.c_long), ("dwFlags", ctypes.c_ulong)]
+    
     TH32CS_SNAPMODULE = 0x00000008; TH32CS_SNAPMODULE32 = 0x00000010; TH32CS_SNAPTHREAD = 0x00000004; THREAD_QUERY_INFORMATION = 0x0040; STATUS_SUCCESS = 0
     ntdll = ctypes.windll.ntdll; kernel32 = ctypes.windll.kernel32
 
@@ -1696,15 +2333,19 @@ def fase_memory_anomaly(palabras, modo):
         return valid_ranges
 
     target_names = ["csgo.exe", "valorant.exe", "dota2.exe", "fortnite.exe", "javaw.exe", "explorer.exe", "svchost.exe", "discord.exe", "steam.exe", "hl2.exe", "gta5.exe", "fivem.exe", "robloxplayerbeta.exe", "minecraft.exe"]
+    
     with open(config.reporte_memory, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== MEMORY FORENSICS (VAD & THREADS): {datetime.datetime.now()} ===\n")
         f.write("Scanning for: Unbacked Executable Memory & Orphan Threads (Injection Indicators)\n\n")
+        
         cmd = 'tasklist /fo csv /nh'
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=0x08000000)
             out, _ = proc.communicate()
         except: return
+        
         if not out: return
+        
         for line in out.splitlines():
             if config.CANCELAR_ESCANEO: break
             parts = line.split(',')
@@ -1712,15 +2353,21 @@ def fase_memory_anomaly(palabras, modo):
             proc_name = parts[0].strip('"')
             try: pid = int(parts[1].strip('"'))
             except: continue
+            
             check_process = False
             if modo == "Analizar Todo": check_process = True
             elif any(t in proc_name.lower() for t in target_names): check_process = True
             elif any(p in proc_name.lower() for p in palabras): check_process = True
+            
             if not check_process: continue
+            
             h_process = kernel32.OpenProcess(0x0400 | 0x0010, False, pid)
             if not h_process: continue
+            
             f.write(f"--> Scanning PID {pid}: {proc_name}...\n"); f.flush()
             valid_modules = get_valid_ranges(pid)
+            
+            # 1. Orphan Threads
             if valid_modules:
                 h_snap_thread = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
                 te32 = THREADENTRY32()
@@ -1751,6 +2398,8 @@ def fase_memory_anomaly(palabras, modo):
                         if not kernel32.Thread32Next(h_snap_thread, ctypes.byref(te32)): break
                 kernel32.CloseHandle(h_snap_thread)
                 if orphans_found == 0: f.write("      [Threads OK] All threads act within valid modules.\n")
+            
+            # 2. VAD Anomalies
             address = 0
             mbi = MEMORY_BASIC_INFORMATION()
             anomalies = 0
@@ -1774,51 +2423,85 @@ def fase_memory_anomaly(palabras, modo):
             kernel32.CloseHandle(h_process)
             f.write("\n")
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_memory)), {'f22': {'active': True}})
+    except: pass
+
+# --- F23: ROGUE DRIVERS ---
 def fase_rogue_drivers(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     print(f"[23/24] Rogue Driver Hunter (Unlinked Modules) [GOD-TIER]...")
+    
+    # Asegurar ruta
     if not config.reporte_drivers: config.reporte_drivers = "Rogue_Drivers.txt"
+
     try:
         with open(config.reporte_drivers, "w", encoding="utf-8", buffering=1) as f:
             f.write(f"=== ROGUE KERNEL DRIVER SCAN: {datetime.datetime.now()} ===\n")
             f.write("Comparing: EnumDeviceDrivers (Memory) vs DriverQuery (Registry)\n")
             f.write("Looking for: Drivers loaded in memory but hidden from the system list.\n\n")
             f.flush()
+            
             proc = subprocess.Popen('driverquery /nh', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             out, _ = proc.communicate()
             official_drivers = set()
             if out:
                 for line in out.decode('cp850', errors='ignore').splitlines():
                     if line.strip(): official_drivers.add(line.split()[0].lower())
+            
             psapi = ctypes.windll.psapi
             image_bases = (ctypes.c_void_p * 1024)()
             cb_needed = ctypes.c_long()
+            
             if psapi.EnumDeviceDrivers(ctypes.byref(image_bases), ctypes.sizeof(image_bases), ctypes.byref(cb_needed)):
                 drivers_count = cb_needed.value // ctypes.sizeof(ctypes.c_void_p)
                 f.write(f"Drivers in Memory: {drivers_count} | Registered Drivers: {len(official_drivers)}\n\n")
                 f.flush()
+                
                 for i in range(drivers_count):
                     base_addr = image_bases[i]
                     if not base_addr: continue
                     name_buffer = ctypes.create_unicode_buffer(256)
                     res = psapi.GetDeviceDriverBaseNameW(ctypes.c_void_p(base_addr), name_buffer, 256)
+                    
                     if res > 0:
                         drv_name = name_buffer.value.lower()
-                        if not drv_name.endswith(".sys"): f.write(f"[SUSPICIOUS] Non-SYS Driver: {drv_name} at {base_addr}\n"); f.flush()
-                        if "iqvw" in drv_name or "capcom" in drv_name or "mhyprot" in drv_name: f.write(f"[!!!] VULNERABLE DRIVER (BYPASS TOOL): {drv_name}\n"); f.flush()
-                    else: f.write(f"[!!!] UNNAMED DRIVER ANOMALY at address: {base_addr}\n      (Posible Kernel Manual Map / KDMapper artifact)\n"); f.flush()
-            else: f.write("Failed to enumerate device drivers (Need Admin?).\n"); f.flush()
+                        if not drv_name.endswith(".sys"): 
+                            f.write(f"[SUSPICIOUS] Non-SYS Driver: {drv_name} at {base_addr}\n"); f.flush()
+                        if "iqvw" in drv_name or "capcom" in drv_name or "mhyprot" in drv_name: 
+                            f.write(f"[!!!] VULNERABLE DRIVER (BYPASS TOOL): {drv_name}\n"); f.flush()
+                    else: 
+                        f.write(f"[!!!] UNNAMED DRIVER ANOMALY at address: {base_addr}\n      (Posible Kernel Manual Map / KDMapper artifact)\n"); f.flush()
+            else: 
+                f.write("Failed to enumerate device drivers (Need Admin?).\n"); f.flush()
     except Exception as e:
         try:
             with open("Driver_Error_Log.txt", "w") as err_f: err_f.write(f"Error scanning drivers: {e}")
         except: pass
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_drivers)), {'f23': {'active': True}})
+    except: pass
+
+
+# --- F24: DEEP STATIC ---
 def fase_deep_static(*args):
     try:
         palabras = args[0]
         modo = "Normal"
         if len(args) > 1 and isinstance(args[-1], str): modo = args[-1]
     except: return
+    
+    # Asegurar ruta
+    if not config.reporte_static: 
+        try:
+            base_path = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
+            folder_name = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
+            out_dir = os.path.join(base_path, folder_name)
+            os.makedirs(out_dir, exist_ok=True)
+            config.reporte_static = os.path.join(out_dir, "Deep_Static_Analysis.txt")
+        except: config.reporte_static = "Deep_Static_Analysis.txt"
+
     try:
         import yara
         YARA_AVAILABLE = True
@@ -1826,11 +2509,6 @@ def fase_deep_static(*args):
     
     if config.CANCELAR_ESCANEO: return
     print("[24/25] Deep Static Heuristics (YARA FIXED | ENTROPY | FAST)")
-    base_path = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
-    folder_name = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
-    out_dir = os.path.join(base_path, folder_name)
-    os.makedirs(out_dir, exist_ok=True)
-    config.reporte_static = os.path.join(out_dir, "Deep_Static_Analysis.txt")
     
     yara_rules = config.GLOBAL_YARA_RULES 
     yara_active = False
@@ -1845,7 +2523,12 @@ def fase_deep_static(*args):
             print("[!] YARA load error:", e)
 
     user = os.environ.get("USERPROFILE", "C:\\")
-    hunt_zones = [os.path.join(user, "Desktop"), os.path.join(user, "Downloads"), os.path.join(user, "AppData", "Local"), os.path.join(user, "AppData", "Roaming")]
+    hunt_zones = [
+        os.path.join(user, "Desktop"), 
+        os.path.join(user, "Downloads"), 
+        os.path.join(user, "AppData", "Local"), 
+        os.path.join(user, "AppData", "Roaming")
+    ]
     MAX_FILE_MB = 30; MAX_TIME = 10; start_time = time.time(); scanned = 0
 
     with open(config.reporte_static, "w", encoding="utf-8", buffering=1) as f:
@@ -1854,18 +2537,22 @@ def fase_deep_static(*args):
         if yara_active: f.write("YARA: ACTIVE (Rules Loaded)\n\n")
         elif not YARA_AVAILABLE: f.write("YARA: NOT INSTALLED (Module Missing)\n\n")
         else: f.write("YARA: FAILED (Rules file not found or compile error)\n\n")
+        
         for zone in hunt_zones:
             if not os.path.exists(zone): continue
             for root, _, files in os.walk(zone):
                 if config.CANCELAR_ESCANEO or time.time() - start_time > MAX_TIME: break
+                
                 rl = root.lower()
                 if any(x in rl for x in ["windows", "microsoft", "google", "common files"]): continue
+                
                 for file in files:
                     if not file.lower().endswith((".exe", ".dll", ".sys")): continue
                     path = os.path.join(root, file)
                     try:
                         if os.path.getsize(path) > MAX_FILE_MB * 1024 * 1024: continue
                     except: continue
+                    
                     try:
                         with open(path, "rb") as fd:
                             data = fd.read(2 * 1024 * 1024)
@@ -1873,8 +2560,10 @@ def fase_deep_static(*args):
                         scanned += 1
                         score = 0
                         reasons = []
+                        
                         ent = calculate_entropy(data)
                         if ent > 7.2: score += 2; reasons.append(f"High entropy ({ent:.2f})")
+                        
                         if yara_active:
                             try:
                                 matches = yara_rules.match(data=data)
@@ -1885,8 +2574,10 @@ def fase_deep_static(*args):
                                     elif rn == "Sus_Config_Files": score += 3; reasons.append("YARA: Cheat config")
                                     else: score += 2; reasons.append(f"YARA: {rn}")
                             except: pass
+                            
                         name = file.rsplit(".", 1)[0]
                         if len(name) <= 3 or name.isdigit(): score += 2; reasons.append("Suspicious filename")
+                        
                         if score >= 4:
                             f.write(f"[!] STATIC THREAT: {file}\n    Path: {path}\n    Score: {score}\n    Reasons: {', '.join(reasons)}\n" + "-" * 50 + "\n")
                             f.flush()
@@ -1894,9 +2585,39 @@ def fase_deep_static(*args):
         f.write(f"\nScan completed. Files scanned: {scanned}\n")
     print("[✓] Deep Static completed")
 
-def fase_metamorphosis_hunter(palabras, modo, target_file=None):
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_static)), {'f24': {'active': True}})
+    except: pass
+
+# --- F25: METAMORPHOSIS HUNTER ---
+def fase_metamorphosis_hunter(context, palabras, modo, target_file=None):
     if config.CANCELAR_ESCANEO: return
     print("[25/25] Metamorphosis, Ghost Exe/DLL & Injection [NUCLEAR]")
+    
+    # Asegurar ruta
+    if not config.reporte_morph: 
+        try:
+            base_path = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
+            folder_name = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
+            config.reporte_morph = os.path.join(base_path, folder_name, "Metamorphosis_DLL_Report.txt")
+        except: config.reporte_morph = "Metamorphosis_DLL_Report.txt"
+    
+    # 1. Chequeo de Metamorfosis (Clones por Hash)
+    hits = []
+    if target_file and os.path.exists(target_file):
+        try:
+            target_size = os.path.getsize(target_file)
+            with open(target_file, "rb") as f: target_hash = hashlib.sha256(f.read()).hexdigest()
+            for f in context.file_snapshot:
+                if f['size'] == target_size:
+                    try:
+                        with open(f['path'], "rb") as fo:
+                            curr_hash = hashlib.sha256(fo.read()).hexdigest()
+                        if curr_hash == target_hash: hits.append(f"Metamorphosis Clone: {f['path']}")
+                    except: pass
+        except: pass
+
+    # 2. Chequeo de DLLs Tóxicas y Eventos USN
     yara_rules = config.GLOBAL_YARA_RULES
     if yara_rules is None:
         try:
@@ -1904,6 +2625,7 @@ def fase_metamorphosis_hunter(palabras, modo, target_file=None):
             path_rules = resource_path("reglas_scanneler.yar")
             yara_rules = yara.compile(filepath=path_rules)
         except: yara_rules = None
+        
     start_time = time.time(); MAX_TIME = 300
     USN_REASON_DATA_EXTEND = 0x00000004; USN_REASON_DATA_TRUNCATION = 0x00000020; USN_REASON_FILE_CREATE = 0x00000100; USN_REASON_FILE_DELETE = 0x00000200; USN_REASON_CLOSE = 0x80000000 
     GENERIC_READ = 0x80000000; GENERIC_WRITE = 0x40000000; FILE_SHARE_READ = 0x00000001; FILE_SHARE_WRITE = 0x00000002; OPEN_EXISTING = 3; FSCTL_QUERY_USN_JOURNAL = 0x000900f4; FSCTL_READ_USN_JOURNAL = 0x000900bb
@@ -1950,15 +2672,20 @@ def fase_metamorphosis_hunter(palabras, modo, target_file=None):
         finally: ctypes.windll.kernel32.CloseHandle(vol_handle)
         return events
 
-    base_path = config.HISTORIAL_RUTAS.get("path", os.path.abspath("."))
-    folder = config.HISTORIAL_RUTAS.get("folder", "Resultados_SS")
-    os.makedirs(os.path.join(base_path, folder), exist_ok=True)
-    config.reporte_morph = os.path.join(base_path, folder, "Metamorphosis_DLL_Report.txt")
-
     with open(config.reporte_morph, "w", encoding="utf-8", buffering=1) as report:
         report.write("=== FASE 25: METAMORPHOSIS & GHOST HUNTER ===\n")
         report.write(f"Scan Time: {datetime.datetime.now()}\n")
+        
+        # Reportar Clones de Metamorfosis si existen
+        if hits:
+            report.write("\n--- [PART 0] FILE CLONES DETECTED ---\n")
+            report.write("\n".join(hits))
+            report.write("\n")
+        elif target_file:
+            report.write("\n[INFO] No clones of the target file found.\n")
+            
         report.write(f"YARA Status: {'ACTIVE' if yara_rules else 'OFF'}\n\n")
+        
         events = get_usn_events_last_hour()
         report.write("--- [PART A] SIZE ANOMALIES (LAST 1 HOUR) ---\n")
         count_a = 0
@@ -1976,8 +2703,8 @@ def fase_metamorphosis_hunter(palabras, modo, target_file=None):
                 report.write(f"[{t_str}] {' + '.join(tags)}: {name}\n")
                 count_a += 1
         if count_a == 0: report.write("[OK] Clean.\n")
-        report.write("\n")
-        report.write("--- [PART B] GHOST EXECUTABLES (CLOSED/DELETED < 1 HOUR) ---\n")
+        
+        report.write("\n--- [PART B] GHOST EXECUTABLES (CLOSED/DELETED < 1 HOUR) ---\n")
         report.write("Detects files (.exe/.dll) closed or deleted recently (Panic Key/Bypass).\n")
         suspicious_extensions = (".dll", ".exe", ".tmp", ".bat", ".ps1") 
         count_b = 0
@@ -1993,8 +2720,8 @@ def fase_metamorphosis_hunter(palabras, modo, target_file=None):
                 report.write(f"[{t_str}] [!!!] {ghost_type}: {e['name']}\n")
                 count_b += 1
         if count_b == 0: report.write("[OK] No suspicious execution stops found.\n")
-        report.write("\n")
-        report.write("--- [PART C] LIVE TOXIC DLLs (CURRENTLY ACTIVE) ---\n")
+        
+        report.write("\n--- [PART C] LIVE TOXIC DLLs (CURRENTLY ACTIVE) ---\n")
         GAME_PROCESSES = ["cs2.exe", "csgo.exe", "valorant.exe", "fortniteclient-win64-shipping.exe", "gta5.exe", "fivem.exe", "dota2.exe", "rustclient.exe"]
         SYSTEM_DLLS = {"kernel32.dll", "ntdll.dll", "user32.dll", "advapi32.dll", "gdi32.dll", "win32u.dll", "wow64.dll", "version.dll", "shlwapi.dll", "ws2_32.dll"}
         WRITABLE_PATHS = ("temp", "appdata", "downloads", "desktop")
@@ -2027,16 +2754,19 @@ def fase_metamorphosis_hunter(palabras, modo, target_file=None):
             except: pass
         if dll_found == 0: report.write("[OK] No toxic DLLs currently injected.\n")
 
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_morph)), {'f25': {'active': True}})
+    except: pass
+
+
+# --- F26: STRING CLEANING ---
 def fase_string_cleaning(palabras, modo):
     # if config.CANCELAR_ESCANEO: return
     print("[26/26] String Cleaner & USN Resurrection (NATIVE SPEED)...")
-    try:
-        base_path = config.HISTORIAL_RUTAS.get('path', os.path.abspath("."))
-        folder_name = config.HISTORIAL_RUTAS.get('folder', "Resultados_SS")
-    except:
-        base_path = os.path.abspath(".")
-        folder_name = "Resultados_SS"
-    config.reporte_cleaning = os.path.join(base_path, folder_name, "String_Cleaner_Detection.txt")
+    
+    # Asegurar ruta
+    if not config.reporte_cleaning: config.reporte_cleaning = "String_Cleaner_Detection.txt"
+    
     GENEALOGY_RULES = {}; GENERIC_READ = 0x80000000; GENERIC_WRITE = 0x40000000; FILE_SHARE_READ = 0x00000001; FILE_SHARE_WRITE = 0x00000002; OPEN_EXISTING = 3; FILE_ATTRIBUTE_NORMAL = 0x80; FSCTL_QUERY_USN_JOURNAL = 0x000900f4; FSCTL_READ_USN_JOURNAL = 0x000900bb; USN_REASON_FILE_DELETE = 0x00000200; USN_REASON_RENAME_OLD_NAME = 0x00001000; USN_REASON_RENAME_NEW_NAME = 0x00002000
     class USN_JOURNAL_DATA_V0(ctypes.Structure): _fields_ = [("UsnJournalID", ctypes.c_ulonglong), ("FirstUsn", ctypes.c_ulonglong), ("NextUsn", ctypes.c_ulonglong), ("LowestValidUsn", ctypes.c_ulonglong), ("MaxUsn", ctypes.c_ulonglong), ("MaximumSize", ctypes.c_ulonglong), ("AllocationDelta", ctypes.c_ulonglong)]
     class READ_USN_JOURNAL_DATA_V0(ctypes.Structure): _fields_ = [("StartUsn", ctypes.c_ulonglong), ("ReasonMask", ctypes.c_uint), ("ReturnOnlyOnClose", ctypes.c_uint), ("Timeout", ctypes.c_ulonglong), ("BytesToWaitFor", ctypes.c_ulonglong), ("UsnJournalID", ctypes.c_ulonglong)]
@@ -2111,86 +2841,10 @@ def fase_string_cleaning(palabras, modo):
                     f.write(f" {tag} [{dt.strftime('%H:%M:%S')}] {tipo}: {nombre}\n"); hits += 1
             if hits == 0: f.write(" [OK] No suspicious file deletions found in recent journal.\n")
             else: f.write(f"\n [ALERTA] Found {hits} suspicious events.\n")
-        except Exception as e: f.write(f" [ERROR] Failed to read USN: {e}\n"); f.write(" * Ensure you are running as ADMINISTRATOR.\n")
+        except Exception as e: 
+            f.write(f" [ERROR] Failed to read USN: {e}\n"); f.write(" * Ensure you are running as ADMINISTRATOR.\n")
 
-def generar_reporte_html(out_f, cfg):
-    import html
-    css = """<style>
-        body{background-color:#090011;color:#f3e5f5;font-family:'Consolas',monospace;padding:20px}
-        h1,h2{color:#d500f9;text-align:center;text-transform:uppercase;letter-spacing:2px;text-shadow:0 0 10px #d500f9}
-        h3{color:#b388ff; margin: 5px 0;}
-        a{color:#ea80fc;text-decoration:none;font-weight:bold;transition:0.3s}
-        a:hover{color:#fff;text-shadow:0 0 8px #ea80fc}
-        .card{border:1px solid #4a148c;background:#1a0526;margin:10px;padding:15px;border-left:5px solid #d500f9;box-shadow:0 0 10px rgba(74,20,140,0.4);transition:transform 0.2s; width: 280px; display:inline-block; vertical-align:top;}
-        .card:hover{transform:scale(1.02);box-shadow:0 0 20px rgba(213,0,249,0.6)}
-        .status-danger{border-left-color: #ff1744 !important; box-shadow: 0 0 10px rgba(255, 23, 68, 0.4);}
-        .status-clean{border-left-color: #00e676 !important;}
-        .status-pending{border-left-color: #757575 !important; opacity: 0.7;}
-        pre{white-space:pre-wrap;word-wrap:break-word;background:#0f0018;padding:15px;border:1px solid #6a1b9a;color:#e1bee7;font-size:0.9em; max-height: 80vh; overflow-y: auto;}
-        .back-btn{display:inline-block;margin-bottom:20px;padding:10px 20px;border:1px solid #d500f9;color:#d500f9;border-radius:50px}
-        .back-btn:hover{background:#d500f9;color:#090011}
-        .footer{text-align:center;margin-top:50px;color:#7b1fa2;font-size:0.8em; clear:both;}
-        .timestamp{color:#9c27b0;font-size:0.9em;text-align:center;margin-bottom:30px}
-        .badge {padding: 2px 8px; border-radius: 4px; font-size: 0.8em; color: black; font-weight: bold;}
-        .b-danger {background: #ff1744; color: white;}
-        .b-clean {background: #00e676;}
-        .b-pending {background: #757575; color: white;}
-    </style>"""
-
-    fmap = {
-        'f1':("ShimCache","Shimcache_Rastros.txt"), 'f2':("AppCompat","rastro_appcompat.txt"), 
-        'f3':("Identity","cambios_sospechosos.txt"), 'f4':("Signatures","Digital_Signatures_ZeroTrust.txt"), 
-        'f5':("Keywords","buscar_en_disco.txt"), 'f6':("Hidden","archivos_ocultos.txt"), 
-        'f7':("MFT_ADS","MFT_Archivos.txt"), 'f8':("UserAssist","UserAssist_Decoded.txt"), 
-        'f9':("USB","USB_History.txt"), 'f10':("DNS","DNS_Cache.txt"), 
-        'f11':("Browser","Browser_Forensics.txt"), 'f12':("Persistence","Persistence_Check.txt"), 
-        'f13':("Events","Windows_Events.txt"), 'f14':("ProcessHunter","Process_Hunter.txt"), 
-        'f15':("GameCheats","Game_Cheat_Hunter.txt"), 'f16':("NuclearTraces","Nuclear_Traces.txt"), 
-        'f17':("KernelHunter","Kernel_Anomalies.txt"), 'f18':("DNA_Prefetch","DNA_Prefetch.txt"), 
-        'f19':("NetworkHunter","Network_Anomalies.txt"), 'f20':("ToxicLNK","Toxic_LNK.txt"), 
-        'f21':("GhostTrails","Ghost_Trails.txt"), 'f22':("MemoryScanner","Memory_Injection_Report.txt"), 
-        'f23':("RogueDrivers","Rogue_Drivers.txt"), 'f24':("DeepStatic","Deep_Static_Analysis.txt"), 
-        'f25':("Metamorphosis","Metamorphosis_Report.txt"),'f26':("StringCleaner","String_Cleaner_Detection.txt"),
-        'vt':("VirusTotal","detecciones_virustotal.txt")
-    }
-
-    g_l = [] 
-    for k, (tit, arch) in fmap.items():
-        is_active = False
-        if k == 'vt': is_active = cfg.get('vt', {}).get('active', False)
-        else: is_active = cfg.get(k, {}).get('active', False)
-
-        if is_active:
-            tp = os.path.join(out_f, arch)
-            hf = f"{k}_{arch.replace('.txt','.html')}"
-            hp = os.path.join(out_f, hf)
-            
-            c_h = ""; status = "PENDING"; card_class = "status-pending"; badge = "<span class='badge b-pending'>WAITING</span>"; meta_refresh = "<meta http-equiv='refresh' content='3'>"
-            
-            if os.path.exists(tp):
-                try:
-                    with open(tp, "r", encoding="utf-8", errors="ignore") as f: raw_content = f.read()
-                    if raw_content.strip():
-                        safe_content = html.escape(raw_content)
-                        safe_content = safe_content.replace("[!!!]", "<span style='color:#ff1744; background:#330000; padding:2px; font-weight:bold;'>[!!!]</span>")
-                        safe_content = safe_content.replace("[ALERTA]", "<span style='color:#ffea00; font-weight:bold;'>[ALERTA]</span>")
-                        c_h = f"<pre>{safe_content}</pre>"; meta_refresh = ""
-                        if "[!!!]" in raw_content or "DETECTED" in raw_content:
-                            status = "THREAT"; card_class = "status-danger"; badge = "<span class='badge b-danger'>THREAT FOUND</span>"
-                        else:
-                            status = "CLEAN"; card_class = "status-clean"; badge = "<span class='badge b-clean'>LOGGED</span>"
-                    else: c_h = "<p style='color:gray'>Processing data stream...</p>"
-                except Exception as e: c_h = f"<p style='color:red'>Error reading log: {e}</p>"
-            else: c_h = "<p style='color:gray; animation: blink 1s infinite;'>Scanning in progress...</p><style>@keyframes blink{50%{opacity:0.5}}</style>"
-            
-            html_page = f"<!DOCTYPE html><html><head><title>{tit}</title>{css}{meta_refresh}</head><body><a href='index.html' class='back-btn'>&lt; DASHBOARD</a><h1>{tit} <small>{badge}</small></h1><div class='card' style='width: 95%; border-left: 5px solid {('#ff1744' if status=='THREAT' else '#d500f9')}'>{c_h}</div><div class='footer'>SCANNELER V80 | FORENSIC MODULE</div></body></html>"
-            with open(hp, "w", encoding="utf-8") as f: f.write(html_page)
-            g_l.append((tit, hf, card_class, badge))
-
-    dbh = f"<!DOCTYPE html><html><head><title>SCANNELER DASHBOARD</title>{css}<meta http-equiv='refresh' content='4'></head><body><h1>SCANNELER <span style='color:#d500f9'>|</span> LIVE MONITOR</h1><div class='timestamp'>SYSTEM TIME: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div><div style='display:flex;flex-wrap:wrap;justify-content:center;'>"
-    if not g_l: dbh += "<p style='text-align:center;'>Waiting for active modules...</p>"
-    else:
-        for tit, link, cls, bdg in g_l: 
-            dbh += f"<div class='card {cls}'><h3>{tit}</h3><div style='margin:10px 0;'>{bdg}</div><p><a href='{link}' style='display:block; background:#000; padding:5px; text-align:center;'>OPEN REPORT &gt;</a></p></div>"
-    dbh += "</div><div class='footer'>JELER33 PRIVATE TOOL | END OF LINE</div></body></html>"
-    with open(os.path.join(out_f, "index.html"), "w", encoding="utf-8") as f: f.write(dbh)
+    # INTEGRACIÓN: Actualizar HTML
+    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_cleaning)), {'f26': {'active': True}})
+    except: pass
+    
