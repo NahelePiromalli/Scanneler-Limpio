@@ -133,6 +133,47 @@ class ModernCard(ctk.CTkFrame):
             self.after(20, self.animate_card)
         except: pass
 
+# --- NUEVA CLASE: ALERTA PERSONALIZADA ---
+class CustomPopup(ctk.CTkToplevel):
+    def __init__(self, parent, title, message, command=None):
+        super().__init__(parent)
+        self.command = command
+        self.title(title)
+        self.geometry("450x280")
+        self.configure(fg_color=COLOR_BG)
+        self.resizable(False, False)
+        self.transient(parent) # Hacerla hija de la ventana principal
+        self.grab_set() # Bloquear interacción con la ventana principal
+
+        # Centrar en la ventana padre
+        try:
+            x = parent.winfo_rootx() + (parent.winfo_width() // 2) - 225
+            y = parent.winfo_rooty() + (parent.winfo_height() // 2) - 140
+            self.geometry(f"+{x}+{y}")
+        except: pass
+
+        # Tarjeta contenedora con borde neón
+        self.card = ctk.CTkFrame(self, fg_color=COLOR_PANEL, border_width=2, border_color=COLOR_ACCENT, corner_radius=15)
+        self.card.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Icono o Título
+        ctk.CTkLabel(self.card, text=title.upper(), font=("Segoe UI", 20, "bold"), text_color="white").pack(pady=(30, 15))
+
+        # Mensaje
+        ctk.CTkLabel(self.card, text=message, font=("Consolas", 12), text_color=COLOR_TEXT, wraplength=400, justify="center").pack(pady=10, padx=20)
+
+        # Botón de Acción
+        ctk.CTkButton(self.card, text="OK", command=self.close, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color="black", font=("Segoe UI", 12, "bold"), width=120, height=35).pack(pady=(20, 30))
+
+        # Efecto de sonido nativo (opcional)
+        try: self.bell()
+        except: pass
+
+    def close(self):
+        self.destroy()
+        if self.command:
+            self.command()
+
 # =============================================================================
 # 2. VENTANAS SECUNDARIAS
 # =============================================================================
@@ -552,12 +593,43 @@ class UserConfigFrame(ctk.CTkFrame):
         self.ui_map = {}
         self.rutas = config.HISTORIAL_RUTAS.copy()
         
+        # --- DICCIONARIO DE DESCRIPCIONES (LO QUE APARECE AL DESPLEGAR) ---
+        self.descripciones = {
+            'f1': "Analiza el registro (ShimCache) para detectar ejecutables que han corrido en el sistema, incluso si fueron borrados. Verifica firmas digitales.",
+            'f2': "Busca rastros de ejecución en la clave AppCompatFlags del registro. Útil para encontrar programas ejecutados recientemente.",
+            'f3': "Compara el nombre del archivo en disco con el nombre interno original (Metadata PE). Detecta renames como 'chrome.exe' que en realidad son 'cheat.exe'.",
+            'f4': "Verifica masivamente las firmas digitales de los procesos y archivos críticos. Alerta sobre binarios sin firmar (Unsigned).",
+            'f5': "Busca cadenas de texto específicas (Strings) dentro de los archivos en carpetas calientes (Downloads, Temp, Desktop).",
+            'f6': "Detecta archivos con el atributo 'Oculto' o de sistema en lugares inusuales. Típico de malware y loaders.",
+            'f7': "Analiza la Master File Table (MFT) buscando flujos de datos alternativos (ADS) donde se esconden configuraciones de cheats.",
+            'f8': "Decodifica el ROT13 de la clave UserAssist en el registro para ver historial de ejecución de la GUI.",
+            'f9': "Auditoría de dispositivos USB conectados históricamente. Detecta si se ejecutó software desde un pendrive.",
+            'f10': "Vuelca la caché DNS y busca conexiones a dominios conocidos de venta de cheats o servidores de autenticación.",
+            'f11': "Analiza bases de datos de navegadores (Chrome/Edge/Firefox) buscando historial de descargas borrado.",
+            'f12': "Revisa llaves de registro 'Run', carpeta de Inicio y Tareas Programadas buscando persistencia (Autostart).",
+            'f13': "Analiza el Visor de Eventos de Windows buscando fallos de servicios o inyecciones bloqueadas.",
+            'f14': "Escanea la memoria RAM buscando procesos con nombres sospechosos o que coincidan con la lista negra.",
+            'f15': "Motor especializado que busca patrones de Cheats conocidos (Aimbots, Wallhacks, Injectors) en disco.",
+            'f16': "Rastrea el 'Background Activity Moderator' (BAM/DAM) para ver ejecuciones exactas con ruta completa.",
+            'f17': "Verifica la integridad del Kernel, busca 'Test Signing Mode' activado y drivers no firmados.",
+            'f18': "Analiza la carpeta Prefetch para reconstruir la historia de ejecución y descomprime archivos .pf.",
+            'f19': "Analiza conexiones TCP/UDP activas y el historial de comandos de PowerShell.",
+            'f20': "Busca accesos directos (.lnk) rotos o que apunten a ejecutables sospechosos/temporales.",
+            'f21': "Rastrea listas MRU (Most Recently Used) y OpenSavePidl para ver qué archivos abrió el usuario.",
+            'f22': "Escanea la memoria en busca de regiones ejecutables privadas (VADs) y hilos huérfanos (Inyecciones DLL).",
+            'f23': "Compara los drivers cargados en memoria contra el registro para detectar Rootkits o Drivers ocultos.",
+            'f24': "Análisis de Entropía: Detecta archivos 'empacados' o encriptados (altamente sospechoso de malware/cheats).",
+            'f25': "Busca 'Clones': Archivos que tienen el mismo Hash que el archivo objetivo (Target File) pero diferente nombre.",
+            'f26': "Analiza el USN Journal buscando evidencia de borrado masivo de archivos o limpieza de strings."
+        }
+
         self.anim = CyberRain(self, COLOR_ACCENT)
         self.anim.place(relx=0, rely=0, relwidth=1, relheight=1)
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
+        # --- SIDEBAR IZQUIERDA ---
         sidebar = ctk.CTkFrame(self, width=320, corner_radius=0, fg_color=COLOR_PANEL)
         sidebar.grid(row=0, column=0, sticky="nsew")
         
@@ -573,10 +645,7 @@ class UserConfigFrame(ctk.CTkFrame):
         ctk.CTkButton(sidebar, text=config.t("btn_start"), command=self.go, height=50, fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, text_color="black", font=("Segoe UI", 14, "bold")).pack(fill="x", padx=30, pady=10)
         ctk.CTkButton(sidebar, text=config.t("btn_back"), command=lambda: controller.switch_frame(MenuFrame), height=40, fg_color="transparent", border_width=1, border_color=COLOR_BORDER, text_color="#aaa", hover_color="#220033").pack(fill="x", padx=30)
 
-        if config.USER_EXPIRY and str(config.USER_EXPIRY).lower() != "none":
-            expiry_text = str(config.USER_EXPIRY).upper()
-        else:
-            expiry_text = "LIFETIME / INDEFINIDO"
+        expiry_text = str(config.USER_EXPIRY).upper() if config.USER_EXPIRY and str(config.USER_EXPIRY).lower() != "none" else "LIFETIME / INDEFINIDO"
 
         info_box = ctk.CTkFrame(sidebar, fg_color="transparent")
         info_box.pack(fill="x", padx=30, pady=(20, 0))
@@ -584,6 +653,7 @@ class UserConfigFrame(ctk.CTkFrame):
         ctk.CTkLabel(info_box, text=config.t("lbl_expiry"), font=("Segoe UI", 10, "bold"), text_color="#888").pack()
         ctk.CTkLabel(info_box, text=expiry_text, font=("Consolas", 12, "bold"), text_color=COLOR_SUCCESS).pack()
 
+        # --- PANEL DERECHO (SCROLLABLE) ---
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.grid(row=0, column=1, sticky="nsew", padx=30, pady=30)
         
@@ -595,7 +665,8 @@ class UserConfigFrame(ctk.CTkFrame):
 
         scroll = ctk.CTkScrollableFrame(main, fg_color="transparent")
         scroll.pack(fill="both", expand=True)
-        scroll.grid_columnconfigure((0,1), weight=1)
+        # Configurar columnas del grid interno del scroll
+        scroll.grid_columnconfigure(0, weight=1) # Columna única para que las tarjetas ocupen todo el ancho
 
         modules = [
             (config.t("f1"), 'f1'), (config.t("f2"), 'f2'), (config.t("f3"), 'f3'),
@@ -614,11 +685,9 @@ class UserConfigFrame(ctk.CTkFrame):
                  'Full': [m[1] for m in modules]}
         self.alwd = perms.get(config.USER_MEMBERSHIP, [])
 
-        r, c = 0, 0
-        for text, key in modules:
-            self.create_module_card(scroll, text, key, r, c)
-            c += 1
-            if c > 1: c = 0; r += 1
+        # Crear tarjetas una debajo de otra para dar espacio a la descripción
+        for i, (text, key) in enumerate(modules):
+            self.create_module_card(scroll, text, key, i)
 
     def cleanup(self): self.anim.detener()
 
@@ -636,25 +705,53 @@ class UserConfigFrame(ctk.CTkFrame):
         elif title == config.t("lbl_list"): self.lv = e
         elif title.startswith(config.t("lbl_target").split()[0]): self.tv = e
 
-    def create_module_card(self, parent, text, key, r, c):
+    def create_module_card(self, parent, text, key, row_idx):
         active = key in self.alwd
         color = "#1a002a" if active else "#0a0010"
-        card = ctk.CTkFrame(parent, fg_color=color, corner_radius=10, border_width=1, border_color="#2a003a")
-        card.grid(row=r, column=c, padx=8, pady=8, sticky="ew")
         
+        # Tarjeta contenedora
+        card = ctk.CTkFrame(parent, fg_color=color, corner_radius=10, border_width=1, border_color="#2a003a")
+        card.grid(row=row_idx, column=0, padx=5, pady=5, sticky="ew")
+        
+        # Configuración del Grid interno de la tarjeta
+        card.grid_columnconfigure(1, weight=1) # El switch toma el espacio
+        
+        # 1. BOTÓN FLECHA (DESPLEGAR)
+        # Usamos una lambda con argumentos por defecto para capturar las variables locales
+        btn_arrow = ctk.CTkButton(card, text="▼", width=25, height=25, fg_color="transparent", 
+                                  hover_color="#333", text_color="#888", font=("Arial", 12))
+        btn_arrow.grid(row=0, column=0, padx=(10, 5), pady=10)
+        
+        # 2. SWITCH (NOMBRE DEL MÓDULO)
         var = ctk.BooleanVar(value=active)
         state = "normal" if active else "disabled"
-        
         sw = ctk.CTkSwitch(card, text=text, variable=var, state=state, progress_color=COLOR_ACCENT, font=("Segoe UI", 12))
-        sw.pack(side="left", padx=15, pady=15)
+        sw.grid(row=0, column=1, padx=5, pady=10, sticky="w")
         
+        # 3. OPTION MENU (MODO)
         mode = tk.StringVar(value=config.t("opt_list"))
-        
         if active and key != 'vt':
-            if key == 'f5':
-                ctk.CTkOptionMenu(card, variable=mode, values=[config.t("opt_list")], width=110, height=24, fg_color="#222", button_color="#333", state="disabled").pack(side="right", padx=15)
+            values = [config.t("opt_list")] if key == 'f5' else [config.t("opt_list"), config.t("opt_all")]
+            opt = ctk.CTkOptionMenu(card, variable=mode, values=values, width=110, height=24, fg_color="#222", button_color="#333")
+            if key == 'f5': opt.configure(state="disabled")
+            opt.grid(row=0, column=2, padx=10, pady=10)
+        
+        # 4. FRAME DE DESCRIPCIÓN (OCULTO INICIALMENTE)
+        desc_frame = ctk.CTkFrame(card, fg_color="transparent")
+        lbl_desc = ctk.CTkLabel(desc_frame, text=self.descripciones.get(key, "Sin descripción."), 
+                                text_color="#aaa", font=("Consolas", 11), justify="left", wraplength=500)
+        lbl_desc.pack(padx=20, pady=(0, 10), anchor="w")
+        
+        # Función para alternar visibilidad
+        def toggle_desc(f=desc_frame, b=btn_arrow):
+            if f.winfo_viewable():
+                f.grid_forget()
+                b.configure(text="▼", text_color="#888")
             else:
-                ctk.CTkOptionMenu(card, variable=mode, values=[config.t("opt_list"), config.t("opt_all")], width=110, height=24, fg_color="#222", button_color="#333").pack(side="right", padx=15)
+                f.grid(row=1, column=0, columnspan=3, sticky="ew")
+                b.configure(text="▲", text_color=COLOR_ACCENT)
+
+        btn_arrow.configure(command=toggle_desc)
         
         self.ui_map[key] = {'active': var, 'modo': mode}
 
@@ -723,8 +820,12 @@ class ScannerFrame(ctk.CTkFrame):
                 msg = self.cola_estado.get_nowait()
                 if msg == "DONE": 
                     self.anim.detener()
-                    messagebox.showinfo(config.t("scan_done_title"), f"{config.t('scan_done_msg')}\n{self.fp}")
-                    self.controller.switch_frame(MenuFrame)
+                    # === ALERTA PERSONALIZADA AQUI ===
+                    CustomPopup(self, 
+                                config.t("scan_done_title"), 
+                                f"{config.t('scan_done_msg')}\n{self.fp}", 
+                                command=lambda: self.controller.switch_frame(MenuFrame))
+                    # =================================
                 else: self.lbl_status.configure(text=msg)
         except: pass
         if not config.CANCELAR_ESCANEO: self.after(100, self.check_queue)

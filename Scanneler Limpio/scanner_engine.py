@@ -80,21 +80,19 @@ def asegurar_ruta_reporte(nombre_archivo):
 # =============================================================================
 def generar_reporte_html(out_f, cfg=None):
     """
-    Genera el Dashboard HTML.
-    CORRECCIÓN: Ahora detecta automáticamente si el archivo .txt existe para mostrarlo,
-    independientemente de la configuración parcial que reciba.
+    Genera el Dashboard HTML y los reportes individuales.
+    MODIFICADO: Ahora incluye botones de navegación entre reportes.
     """
-    # Si no se pasa una ruta de salida, intentar deducirla de la configuración global
+    # 1. Asegurar ruta de salida
     if not out_f:
-        try:
-            out_f = os.path.join(config.HISTORIAL_RUTAS['path'], config.HISTORIAL_RUTAS['folder'])
-        except:
-            out_f = os.getcwd()
+        try: out_f = os.path.join(config.HISTORIAL_RUTAS['path'], config.HISTORIAL_RUTAS['folder'])
+        except: out_f = os.getcwd()
 
     if not os.path.exists(out_f):
         try: os.makedirs(out_f)
         except: return
 
+    # 2. Definir Estilos CSS (Incluye nuevos botones de navegación)
     css = """<style>
         body{background-color:#090011;color:#f3e5f5;font-family:'Consolas',monospace;padding:20px}
         h1,h2{color:#d500f9;text-align:center;text-transform:uppercase;letter-spacing:2px;text-shadow:0 0 10px #d500f9}
@@ -104,8 +102,15 @@ def generar_reporte_html(out_f, cfg=None):
         .status-clean{border-left-color: #00e676 !important;}
         .status-pending{border-left-color: #757575 !important; opacity: 0.7;}
         pre{white-space:pre-wrap;word-wrap:break-word;background:#0f0018;padding:15px;border:1px solid #6a1b9a;color:#e1bee7;font-size:0.8em; max-height: 60vh; overflow-y: auto;}
-        .back-btn{display:inline-block;margin-bottom:20px;padding:10px 20px;border:1px solid #d500f9;color:#d500f9;border-radius:50px}
-        .back-btn:hover{background:#d500f9;color:#090011}
+        
+        /* BARRA DE NAVEGACIÓN */
+        .nav-bar {display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px; background: #1a0526; border: 1px solid #4a148c; border-radius: 50px;}
+        .nav-btn {text-decoration: none; color: #ea80fc; font-weight: bold; padding: 8px 20px; border: 1px solid #d500f9; border-radius: 20px; transition: 0.3s;}
+        .nav-btn:hover {background: #d500f9; color: #090011;}
+        .nav-btn.disabled {opacity: 0.3; cursor: default; border-color: #555; color: #555;}
+        .nav-btn.disabled:hover {background: transparent; color: #555;}
+        .dash-btn {font-size: 1.1em; letter-spacing: 1px;}
+
         .footer{text-align:center;margin-top:50px;color:#7b1fa2;font-size:0.8em; clear:both;}
         .timestamp{color:#9c27b0;font-size:0.9em;text-align:center;margin-bottom:30px}
         .badge {padding: 2px 8px; border-radius: 4px; font-size: 0.8em; color: black; font-weight: bold;}
@@ -114,6 +119,7 @@ def generar_reporte_html(out_f, cfg=None):
         .b-pending {background: #757575; color: white;}
     </style>"""
 
+    # 3. Mapa de Fases
     fmap = {
         'f1':("ShimCache","Shimcache_Rastros.txt"), 'f2':("AppCompat","rastro_appcompat.txt"), 
         'f3':("Identity","cambios_sospechosos.txt"), 'f4':("Signatures","Digital_Signatures_ZeroTrust.txt"), 
@@ -131,64 +137,93 @@ def generar_reporte_html(out_f, cfg=None):
         'vt':("VirusTotal","detecciones_virustotal.txt")
     }
 
-    g_l = [] 
+    # 4. RECOLECCIÓN: Primero reunimos todos los datos de los reportes activos
+    active_reports = []
+    
     for k, (tit, arch) in fmap.items():
         tp = os.path.join(out_f, arch)
         file_exists = os.path.exists(tp)
         
-        # Determinar si debemos mostrar esta tarjeta
-        # 1. Si el archivo existe (ya se escaneó)
-        # 2. O si está activado en la configuración actual (se va a escanear)
         should_show = False
-        if file_exists:
-            should_show = True
-        elif cfg and k == 'vt':
-             if 'vt' in cfg and cfg['vt'].get('active'): should_show = True
-        elif cfg and k in cfg and cfg[k].get('active'):
-             should_show = True
+        if file_exists: should_show = True
+        elif cfg and k == 'vt' and cfg.get('vt', {}).get('active'): should_show = True
+        elif cfg and k in cfg and cfg[k].get('active'): should_show = True
 
         if should_show:
-            hf = f"{k}_{arch.replace('.txt','.html')}"
-            hp = os.path.join(out_f, hf)
+            hf = f"{k}_{arch.replace('.txt','.html')}" # Nombre archivo HTML
             
             c_h = ""; status = "PENDING"; card_class = "status-pending"; badge = "<span class='badge b-pending'>WAITING</span>"; meta_refresh = "<meta http-equiv='refresh' content='3'>"
             
             if file_exists:
                 try:
                     with open(tp, "r", encoding="utf-8", errors="ignore") as f: raw_content = f.read()
-                    
-                    # Verificar si el archivo está vacío o solo tiene la cabecera
                     if len(raw_content) > 10: 
                         safe_content = html.escape(raw_content)
                         safe_content = safe_content.replace("[!!!]", "<span style='color:#ff1744; background:#330000; padding:2px; font-weight:bold;'>[!!!]</span>")
                         safe_content = safe_content.replace("[ALERTA]", "<span style='color:#ffea00; font-weight:bold;'>[ALERTA]</span>")
                         c_h = f"<pre>{safe_content}</pre>"; meta_refresh = ""
                         
-                        # Lógica de detección de amenazas
                         if "[!!!]" in raw_content or "DETECTED" in raw_content or "THREAT" in raw_content or "MALICIOUS" in raw_content:
                             status = "THREAT"; card_class = "status-danger"; badge = "<span class='badge b-danger'>THREAT FOUND</span>"
                         else:
                             status = "CLEAN"; card_class = "status-clean"; badge = "<span class='badge b-clean'>CLEAN</span>"
-                    else: 
-                        # Archivo creado pero vacío (aún escribiendo)
-                        c_h = "<p style='color:gray'>Initializing log...</p>"
+                    else: c_h = "<p style='color:gray'>Initializing log...</p>"
                 except Exception as e: c_h = f"<p style='color:red'>Error reading log: {e}</p>"
-            else: 
-                c_h = "<p style='color:gray; animation: blink 1s infinite;'>Scanning in progress...</p><style>@keyframes blink{50%{opacity:0.5}}</style>"
+            else: c_h = "<p style='color:gray; animation: blink 1s infinite;'>Scanning in progress...</p><style>@keyframes blink{50%{opacity:0.5}}</style>"
             
-            html_page = f"<!DOCTYPE html><html><head><title>{tit}</title>{css}{meta_refresh}</head><body><a href='index.html' class='back-btn'>&lt; DASHBOARD</a><h1>{tit} <small>{badge}</small></h1><div class='card' style='width: 95%; border-left: 5px solid {('#ff1744' if status=='THREAT' else '#d500f9')}'>{c_h}</div><div class='footer'>SCANNELER V80 | FORENSIC MODULE</div></body></html>"
-            
-            try:
-                with open(hp, "w", encoding="utf-8") as f: f.write(html_page)
-            except: pass
-            
-            g_l.append((tit, hf, card_class, badge))
+            # Guardamos todos los datos necesarios para generar el HTML más tarde
+            active_reports.append({
+                'title': tit,
+                'html_filename': hf,
+                'content': c_h,
+                'badge': badge,
+                'status': status,
+                'card_class': card_class,
+                'meta': meta_refresh,
+                'file_path': os.path.join(out_f, hf)
+            })
 
-    # Generar Index siempre que haya algo que mostrar
-    if g_l:
-        dbh = f"<!DOCTYPE html><html><head><title>SCANNELER DASHBOARD</title>{css}<meta http-equiv='refresh' content='3'></head><body><h1>SCANNELER <span style='color:#d500f9'>|</span> LIVE MONITOR</h1><div class='timestamp'>SYSTEM TIME: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div><div style='display:flex;flex-wrap:wrap;justify-content:center;'>"
-        for tit, link, cls, bdg in g_l: 
-            dbh += f"<div class='card {cls}'><h3>{tit}</h3><div style='margin:10px 0;'>{bdg}</div><p><a href='{link}' style='display:block; background:#000; padding:5px; text-align:center;'>OPEN REPORT &gt;</a></p></div>"
+    # 5. GENERACIÓN: Creamos los HTMLs individuales con los enlaces calculados
+    count = len(active_reports)
+    for i, report in enumerate(active_reports):
+        # Calcular enlaces
+        prev_link = active_reports[i-1]['html_filename'] if i > 0 else None
+        next_link = active_reports[i+1]['html_filename'] if i < count - 1 else None
+        
+        # HTML de la barra de navegación
+        nav_html = '<div class="nav-bar">'
+        if prev_link: nav_html += f'<a href="{prev_link}" class="nav-btn">&lt; PREV</a>'
+        else: nav_html += '<span class="nav-btn disabled">&lt; PREV</span>'
+        
+        nav_html += '<a href="index.html" class="nav-btn dash-btn">DASHBOARD</a>'
+        
+        if next_link: nav_html += f'<a href="{next_link}" class="nav-btn">NEXT &gt;</a>'
+        else: nav_html += '<span class="nav-btn disabled">NEXT &gt;</span>'
+        nav_html += '</div>'
+
+        # Contenido completo de la página
+        page_content = f"""<!DOCTYPE html>
+        <html>
+        <head><title>{report['title']}</title>{css}{report['meta']}</head>
+        <body>
+            {nav_html}
+            <h1>{report['title']} <small>{report['badge']}</small></h1>
+            <div class='card' style='width: 95%; border-left: 5px solid {('#ff1744' if report['status']=='THREAT' else '#d500f9')}'>
+                {report['content']}
+            </div>
+            <div class='footer'>SCANNELER V80 | FORENSIC MODULE</div>
+        </body>
+        </html>"""
+        
+        try:
+            with open(report['file_path'], "w", encoding="utf-8") as f: f.write(page_content)
+        except: pass
+
+    # 6. GENERACIÓN DEL DASHBOARD (INDEX)
+    if active_reports:
+        dbh = f"<!DOCTYPE html><html><head><title>SCANNELER DASHBOARD</title>{css}<meta http-equiv='refresh' content='4'></head><body><h1>SCANNELER <span style='color:#d500f9'>|</span> LIVE MONITOR</h1><div class='timestamp'>SYSTEM TIME: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div><div style='display:flex;flex-wrap:wrap;justify-content:center;'>"
+        for r in active_reports: 
+            dbh += f"<div class='card {r['card_class']}'><h3>{r['title']}</h3><div style='margin:10px 0;'>{r['badge']}</div><p><a href='{r['html_filename']}' style='display:block; background:#000; padding:5px; text-align:center;'>OPEN REPORT &gt;</a></p></div>"
         dbh += "</div><div class='footer'>JELER33 PRIVATE TOOL | END OF LINE</div></body></html>"
         try:
             with open(os.path.join(out_f, "index.html"), "w", encoding="utf-8") as f: f.write(dbh)
@@ -261,99 +296,171 @@ class ScannerContext:
 def fase_shimcache(palabras, modo):
     if config.CANCELAR_ESCANEO: return
     
-    # --- CORRECCIÓN: USAR RUTA ABSOLUTA ---
     config.reporte_shim = asegurar_ruta_reporte("Shimcache_Rastros.txt")
-    
-    # --- PASO 1: RECONOCIMIENTO DE HARDWARE ---
-    discos_fijos = []    
-    discos_usb = []      
-    mapa_discos = {} 
+    print(f"[F1] ShimCache Nuclear: Timeline Sorting (Newest First)...")
 
+    # 1. Mapeo de Discos
+    discos_usb = []
     try:
-        cmd_drives = "Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID, DriveType"
-        proc_d = subprocess.Popen(['powershell', '-noprofile', '-command', cmd_drives], stdout=subprocess.PIPE, text=True, creationflags=0x08000000)
-        out_d, _ = proc_d.communicate()
-        
-        for linea in out_d.splitlines():
-            linea = linea.strip()
-            if not linea or "DeviceID" in linea or "----" in linea: continue
-            partes = linea.split()
-            if len(partes) >= 2:
-                letra = partes[0].upper()
-                tipo = partes[1]
-                if tipo == '3' or tipo == '4':
-                    discos_fijos.append(letra)
-                    mapa_discos[letra] = "INTERNAL/FIXED (Safe)"
-                elif tipo == '2':
-                    discos_usb.append(letra)
-                    mapa_discos[letra] = "USB DEVICE (Active)"
-    except:
-        discos_fijos = ["C:"]
+        import psutil
+        partitions = psutil.disk_partitions(all=True)
+        for p in partitions:
+            if 'removable' in p.opts or 'cdrom' in p.opts:
+                discos_usb.append(p.device[:2].upper())
+    except: pass 
 
-    alertas = []
-    historial_limpio = []
-
+    # 2. Extracción Raw (Registry)
+    raw_paths = []
     try:
-        ps_shim = "$Reg = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\AppCompatCache').AppCompatCache; if($Reg){ $Enc = [System.Text.Encoding]::Unicode.GetString($Reg); [regex]::Matches($Enc, '([a-zA-Z]:\\\\[^\\x00]+)').Value }"
-        proc = subprocess.Popen(['powershell', '-noprofile', '-command', ps_shim], stdout=subprocess.PIPE, text=True, creationflags=0x08000000)
-        out, _ = proc.communicate()
+        reg_path = r"SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache"
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path)
+        data, type_ = winreg.QueryValueEx(key, "AppCompatCache")
+        winreg.CloseKey(key)
+
+        import struct
         
-        if out:
-            lineas_unicas = list(dict.fromkeys(out.splitlines()))
-            for ruta in lineas_unicas:
-                ruta = ruta.strip()
-                if len(ruta) < 3 or ":" not in ruta: continue
-                ruta_upper = ruta.upper()
-                drive = ruta_upper[:2]
-                nombre_archivo = os.path.basename(ruta).lower()
-                
-                es_alerta = False
-                tag = ""
+        if len(data) > 52 and data[0:4] == b'10ts': # Win 10/11
+            pos = 52 
+            while pos < len(data) - 10:
+                try:
+                    if data[pos:pos+4] != b'10ts':
+                        pos += 1
+                        continue
+                    
+                    entry_size = struct.unpack('<I', data[pos+8:pos+12])[0]
+                    path_len = struct.unpack('<H', data[pos+12:pos+14])[0]
+                    
+                    if entry_size == 0: 
+                        pos += 4
+                        continue
 
-                if drive in discos_usb:
-                    tag = f"[!!!] EJECUCIÓN DESDE USB ACTIVO ({drive})"
-                    es_alerta = True
-                elif drive not in discos_fijos:
-                    tag = f"[!!!] GHOST DRIVE DETECTED ({drive} - Dispositivo Desconectado)"
-                    es_alerta = True
-                
-                if any(p in nombre_archivo for p in palabras):
-                    if es_alerta: tag += " + KEYWORD MATCH"
-                    else: 
-                        tag = "[ALERTA] KEYWORD MATCH"
-                        es_alerta = True
-
-                if es_alerta:
-                    alertas.append(f"{tag}: {ruta}")
-                else:
-                    if "WINDOWS\\SYSTEM32" in ruta_upper and ".DLL" in ruta_upper:
-                        continue 
-                    historial_limpio.append(ruta)
+                    path_bytes = data[pos+14 : pos+14+path_len]
+                    path_str = path_bytes.decode('utf-16-le', errors='ignore').strip('\x00')
+                    
+                    if path_str and "System32" not in path_str:
+                        raw_paths.append(path_str)
+                    
+                    pos += entry_size
+                except: pos += 1
+        else: # Legacy
+            text_data = data.decode('utf-16-le', errors='ignore')
+            import re
+            found = re.findall(r'[a-zA-Z]:\\[a-zA-Z0-9_\\\-\. ]+\.exe', text_data, re.IGNORECASE)
+            raw_paths = list(found)
 
     except Exception as e:
-        alertas.append(f"Error crítico leyendo ShimCache: {e}")
+        print(f"Error parsing Registry: {e}")
 
-    with open(config.reporte_shim, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== SHIMCACHE FORENSICS V3: {datetime.datetime.now()} ===\n")
-        f.write("[+] MAPA DE DISCOS RECONOCIDOS (Hardware Actual):\n")
-        for k, v in mapa_discos.items():
-            f.write(f"    DISK {k} -> {v}\n")
-        f.write("-" * 80 + "\n\n")
-        
-        if alertas:
-            f.write(f"[!!!] AMENAZAS Y ANOMALÍAS DETECTADAS ({len(alertas)}):\n")
-            for a in alertas:
-                f.write(f" {a}\n")
-        else:
-            f.write("[OK] No se detectaron ejecuciones desde USBs o Discos Fantasma sospechosos.\n")
-        
-        f.write("\n" + "=" * 80 + "\n")
-        f.write(f"[+] HISTORIAL DE EJECUCIÓN COMPLETO ({len(historial_limpio)} entradas):\n")
-        f.write("(Se han ocultado librerías nativas de System32 para facilitar la lectura)\n\n")
-        for h in historial_limpio:
-            f.write(f" {h}\n")
+    # 3. PROCESAMIENTO Y ORDENAMIENTO POR FECHA REAL
+    processed_entries = []
     
-    # INTEGRACIÓN: Actualizar HTML usando la ruta absoluta del archivo generado
+    # Whitelist
+    SAFE_PATHS = [
+        r"\windows\system32", r"\windows\syswow64", r"\windows\servicing", 
+        r"\program files\google", r"\program files (x86)\google",
+        r"\program files\windows defender", r"\program files\microsoft",
+        r"\program files\nvidia", r"\program files\amd", r"\program files\intel",
+        r"\program files\java", r"\program files\common files",
+        r"\program files\git", r"\program files\docker", r"\program files\vscode",
+        r"\appdata\local\programs\python", r"\appdata\local\programs\microsoft vs code"
+    ]
+    SAFE_NAMES = ["setup.exe", "install.exe", "update.exe", "mpsigstub.exe", "unins000.exe"]
+
+    for path in raw_paths:
+        path = path.strip()
+        if len(path) < 3: continue
+        
+        path_lower = path.lower()
+        name = os.path.basename(path_lower)
+        
+        # Filtros de Ruido
+        if any(s in path_lower for s in SAFE_PATHS): continue
+        if ("\\temp\\" in path_lower or "softwaredistribution" in path_lower) and name in SAFE_NAMES: continue
+
+        # Obtener Fecha del Sistema de Archivos
+        timestamp = 0
+        date_display = "GHOST / DELETED"
+        exists = os.path.exists(path)
+        
+        if exists:
+            try:
+                timestamp = os.path.getmtime(path)
+                date_display = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+            except: 
+                pass
+        
+        # Guardar objeto para ordenar después
+        processed_entries.append({
+            'path': path,
+            'ts': timestamp,
+            'date': date_display,
+            'exists': exists,
+            'name': name,
+            'drive': path[:2].upper()
+        })
+
+    # --- ORDENAMIENTO CRÍTICO: De Mayor Timestamp (Reciente) a Menor (Antiguo) ---
+    # Los archivos borrados (ts=0) quedarán al final
+    processed_entries.sort(key=lambda x: x['ts'], reverse=True)
+
+    # 4. ANÁLISIS DE AMENAZAS Y ESCRITURA
+    with open(config.reporte_shim, "w", encoding="utf-8", buffering=1) as f:
+        f.write(f"=== SHIMCACHE TIMELINE (SORTED BY DATE) ===\n")
+        f.write(f"Scan Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"{'MODIFIED DATE':<20} | {'STATUS':<25} | PATH\n")
+        f.write("-" * 110 + "\n")
+
+        count_threats = 0
+
+        for entry in processed_entries:
+            path = entry['path']
+            tags = []
+            is_suspicious = False
+            
+            # Criterios
+            if entry['drive'] in discos_usb:
+                tags.append("USB-EXEC")
+                is_suspicious = True
+            
+            if any(p in entry['name'] for p in palabras):
+                tags.append("KEYWORD")
+                is_suspicious = True
+            
+            if modo == "Analizar Todo":
+                is_suspicious = True
+
+            # Verificación Forense
+            status_text = "CLEAN"
+            
+            if is_suspicious:
+                if entry['exists']:
+                    # Verificar Firma
+                    try:
+                        valid_sig, msg = verificar_firma_nativa(path)
+                        if valid_sig:
+                            # Si está firmado y no es USB, reducir ruido
+                            if "USB-EXEC" not in tags: continue
+                            status_text = "[SIGNED] USB"
+                        else:
+                            tags.append("UNSIGNED")
+                            status_text = f"[!!!] {' '.join(tags)}"
+                            count_threats += 1
+                    except: pass
+                else:
+                    # Borrado
+                    if "KEYWORD" in tags or "USB-EXEC" in tags or modo == "Analizar Todo":
+                        tags.append("DELETED")
+                        status_text = f"[!!!] {' '.join(tags)}"
+                        count_threats += 1
+                    else:
+                        continue # Ignorar borrados genéricos no sospechosos
+
+            # Escribir fila ordenada
+            f.write(f"{entry['date']:<20} | {status_text:<25} | {path}\n")
+
+        if count_threats == 0:
+            f.write("\n[OK] No high-risk anomalies found in execution history.\n")
+
     try: generar_reporte_html(os.path.dirname(config.reporte_shim), {'f1': {'active': True}})
     except: pass
     
@@ -1623,91 +1730,146 @@ def fase_game_cheat_hunter(context, palabras, modo):
 # --- F16: NUCLEAR TRACES ---
 def fase_nuclear_traces(palabras, modo):
     if config.CANCELAR_ESCANEO: return
-    print(f"[16/24] Nuclear Traces (Pipes & BAM with Timestamps) [DEFINITIVE]...")
+    print(f"[16/24] Nuclear Traces (Clean Layout)...")
     
     # Asegurar ruta
-    if not config.reporte_nuclear: config.reporte_nuclear = "Nuclear_Traces.txt"
+    config.reporte_nuclear = asegurar_ruta_reporte("Nuclear_Traces.txt")
     
     now = datetime.datetime.now()
-    limit_time = now - datetime.timedelta(hours=4)
+    limit_time = now - datetime.timedelta(hours=24) 
 
+    # ==============================================================================
+    # 0. OBTENER PROCESOS ACTIVOS
+    # ==============================================================================
+    running_names = []
+    try:
+        import psutil
+        for p in psutil.process_iter(['name']):
+            try:
+                running_names.append(p.info['name'].lower())
+            except: pass
+    except: pass
+
+    # ==============================================================================
+    # 1. RECOLECCIÓN BAM
+    # ==============================================================================
+    bam_entries = []
+    
+    try:
+        bam_path = r"SYSTEM\CurrentControlSet\Services\bam\State\UserSettings"
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, bam_path, 0, winreg.KEY_READ) as k_bam:
+            num_sids = winreg.QueryInfoKey(k_bam)[0]
+            for i in range(num_sids):
+                sid = winreg.EnumKey(k_bam, i)
+                try:
+                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, f"{bam_path}\\{sid}", 0, winreg.KEY_READ) as k_user:
+                        num_vals = winreg.QueryInfoKey(k_user)[1]
+                        for j in range(num_vals):
+                            exe_path, value_data, type_ = winreg.EnumValue(k_user, j)
+                            
+                            exec_time = None
+                            try:
+                                if type_ == winreg.REG_BINARY and len(value_data) >= 8:
+                                    filetime_int = struct.unpack('<Q', value_data[:8])[0]
+                                    exec_time = filetime_to_dt(filetime_int)
+                            except: pass
+                            
+                            if not exec_time: continue 
+
+                            if "\\Device\\HarddiskVolume" in exe_path: 
+                                exe_path = exe_path.replace("\\Device\\HarddiskVolume", "Volume_")
+                            
+                            bam_entries.append({
+                                'time': exec_time,
+                                'path': exe_path,
+                                'sid': sid
+                            })
+                except: pass
+    except Exception as e:
+        print(f"Error reading BAM: {e}")
+
+    # Ordenar: Más reciente arriba
+    bam_entries.sort(key=lambda x: x['time'], reverse=True)
+
+    # ==============================================================================
+    # 2. ESCRITURA DEL REPORTE
+    # ==============================================================================
     with open(config.reporte_nuclear, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== NUCLEAR TRACES: {now.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
-        f.write("Target: Active Pipes & RECENT BAM Execution (Last 4 Hours)\n\n")
+        f.write("Scope: BAM Execution History + LIVE STATE CHECK\n")
+        
+        # --- SECCIÓN A: BAM ---
+        f.write("\n" + "="*80 + "\n")
+        f.write(" [A] BAM EXECUTION TIMELINE (LAST 24H)\n")
+        f.write("="*80 + "\n")
+        # Columnas limpias: FECHA | ESTADO | RUTA
+        f.write(f"{'TIMESTAMP':<20} | {'STATE':<10} | PATH\n")
+        f.write("-" * 100 + "\n")
+        
+        count_bam_hits = 0
+        
+        for entry in bam_entries:
+            if entry['time'] < limit_time: continue 
+
+            time_str = entry['time'].strftime('%Y-%m-%d %H:%M:%S')
+            path_lower = entry['path'].lower()
+            file_name = os.path.basename(path_lower)
+            
+            # --- DETERMINAR ESTADO (OPEN / CLOSED) ---
+            state_str = "[CLOSED]"
+            if file_name in running_names:
+                state_str = "[OPEN]  " 
+            
+            # --- FILTRADO INTERNO (Para saber qué mostrar) ---
+            hit = False
+            
+            if "temp" in path_lower or "appdata" in path_lower:
+                if any(k in path_lower for k in ["cheat", "loader", "inject", "priv", "vip", "client"]): 
+                    hit = True
+                elif modo == "Analizar Todo" and ".exe" in path_lower:
+                    pass # Se mostrará por la condición 'Analizar Todo' abajo
+            
+            if "volume_" in path_lower and "program files" not in path_lower and "windows" not in path_lower: 
+                hit = True
+            
+            if any(p in path_lower for p in palabras): 
+                hit = True
+
+            # Escribir línea (SIN COLUMNA DE DETECCIÓN VISIBLE)
+            if hit:
+                f.write(f"{time_str:<20} | {state_str:<10} | {entry['path']}\n")
+                count_bam_hits += 1
+            elif modo == "Analizar Todo":
+                if "windows\\" not in path_lower and "program files" not in path_lower:
+                     f.write(f"{time_str:<20} | {state_str:<10} | {entry['path']}\n")
+
+        if count_bam_hits == 0 and modo != "Analizar Todo":
+            f.write("\n[OK] No suspicious execution traces found in BAM (Last 24h).\n")
+
+        # --- SECCIÓN B: PIPES ---
+        f.write("\n\n" + "="*80 + "\n")
+        f.write(" [B] LIVE NAMED PIPES\n")
+        f.write("="*80 + "\n")
         
         suspicious_pipes = ["cheat", "hack", "injector", "loader", "esp", "aim", "battleye", "easyanticheat", "faceit", "esea", "vanguard", "overlay", "hook", "auth"]
-        f.write("--- LIVE NAMED PIPES ---\n")
+        
         try:
             pipes = os.listdir(r'\\.\pipe\\')
             found_pipe = False
             for pipe in pipes:
                 pipe_lower = pipe.lower()
                 if any(s in pipe_lower for s in suspicious_pipes): 
-                    f.write(f"[PIPE DETECTED] Posible Hack Comms: {pipe}\n")
+                    f.write(f"[!!!] THREAT PIPE DETECTED: {pipe}\n")
                     found_pipe = True
-                if len(pipe) > 20 and "-" in pipe and "{" not in pipe and "com" not in pipe:
+                elif len(pipe) > 20 and "-" in pipe and "{" not in pipe and "com" not in pipe:
                       if modo == "Analizar Todo": 
-                          f.write(f"[SUSPICIOUS PIPE] Random/UUID Pattern: {pipe}\n")
-            if not found_pipe: f.write("[OK] No suspicious pipes found.\n")
+                          f.write(f"[INFO] SUSPICIOUS PATTERN: {pipe}\n")
+                          found_pipe = True
+            
+            if not found_pipe: f.write("[OK] No suspicious named pipes found active.\n")
         except Exception as e: f.write(f"Error scanning pipes: {e}\n")
 
-        f.write("\n--- BAM EXECUTION HISTORY (TIMESTAMPED) ---\n")
-        try:
-            bam_path = r"SYSTEM\CurrentControlSet\Services\bam\State\UserSettings"
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, bam_path, 0, winreg.KEY_READ) as k_bam:
-                num_sids = winreg.QueryInfoKey(k_bam)[0]
-                for i in range(num_sids):
-                    sid = winreg.EnumKey(k_bam, i)
-                    try:
-                        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, f"{bam_path}\\{sid}", 0, winreg.KEY_READ) as k_user:
-                            num_vals = winreg.QueryInfoKey(k_user)[1]
-                            hits = 0
-                            for j in range(num_vals):
-                                exe_path, value_data, type_ = winreg.EnumValue(k_user, j)
-                                try:
-                                    if type_ == winreg.REG_BINARY and len(value_data) >= 8:
-                                        filetime_int = struct.unpack('<Q', value_data[:8])[0]
-                                        exec_time = filetime_to_dt(filetime_int)
-                                    else: exec_time = None
-                                except: exec_time = None
-                                
-                                if "\\Device\\HarddiskVolume" in exe_path: 
-                                    exe_path = exe_path.replace("\\Device\\HarddiskVolume", "Volume_")
-                                exe_lower = exe_path.lower()
-                                
-                                is_recent = False
-                                if exec_time:
-                                    if exec_time > limit_time:
-                                        is_recent = True
-                                        time_str = exec_time.strftime('%H:%M:%S')
-                                    else: continue 
-                                else: time_str = "Unknown Time"
-                                
-                                hit = False
-                                reason = ""
-                                if "temp" in exe_lower or "appdata" in exe_lower:
-                                    if any(k in exe_lower for k in ["cheat", "loader", "inject", "priv", "vip", "client"]): 
-                                        hit = True; reason = "Keyword in Temp Path"
-                                    elif modo == "Analizar Todo" and ".exe" in exe_lower and is_recent:
-                                        f.write(f"[RECENT TEMP] {time_str} | {exe_path}\n")
-                                        continue
-                                if "volume_" in exe_lower and "program files" not in exe_lower and "windows" not in exe_lower: 
-                                    hit = True; reason = "External Drive / Hidden Volume"
-                                if any(p in exe_lower for p in palabras) or any(s in exe_lower for s in ["aimbot", "esp", "wallhack", "clicker"]): 
-                                    hit = True; reason = "Keyword Match"
-                                
-                                if hit and is_recent:
-                                    f.write(f"[!!!] EXECUTION PROVEN: {time_str} | {exe_path}\n")
-                                    f.write(f"      Reason: {reason}\n")
-                                    hits += 1
-                            if hits == 0: f.write(f"[INFO] SID {sid[:8]}... Clean in last 4 hours.\n")
-                    except Exception as e_inner: pass
-        except Exception as e: f.write(f"Error accessing BAM registry: {e}\n")
-    
-    print(f"   --> Reporte Nuclear generado: {config.reporte_nuclear}")
-
-    # INTEGRACIÓN: Actualizar HTML
-    try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_nuclear)), {'f16': {'active': True}})
+    try: generar_reporte_html(os.path.dirname(config.reporte_nuclear), {'f16': {'active': True}})
     except: pass
     
 # --- F17: KERNEL HUNTER ---
