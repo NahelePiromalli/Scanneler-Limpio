@@ -593,34 +593,35 @@ class UserConfigFrame(ctk.CTkFrame):
         self.ui_map = {}
         self.rutas = config.HISTORIAL_RUTAS.copy()
         
-        # --- DICCIONARIO DE DESCRIPCIONES (LO QUE APARECE AL DESPLEGAR) ---
+        # --- DESCRIPCIONES DINÁMICAS (SE TRADUCEN AL CAMBIAR IDIOMA) ---
         self.descripciones = {
-            'f1': "Analiza el registro (ShimCache) para detectar ejecutables que han corrido en el sistema, incluso si fueron borrados. Verifica firmas digitales.",
-            'f2': "Busca rastros de ejecución en la clave AppCompatFlags del registro. Útil para encontrar programas ejecutados recientemente.",
-            'f3': "Compara el nombre del archivo en disco con el nombre interno original (Metadata PE). Detecta renames como 'chrome.exe' que en realidad son 'cheat.exe'.",
-            'f4': "Verifica masivamente las firmas digitales de los procesos y archivos críticos. Alerta sobre binarios sin firmar (Unsigned).",
-            'f5': "Busca cadenas de texto específicas (Strings) dentro de los archivos en carpetas calientes (Downloads, Temp, Desktop).",
-            'f6': "Detecta archivos con el atributo 'Oculto' o de sistema en lugares inusuales. Típico de malware y loaders.",
-            'f7': "Analiza la Master File Table (MFT) buscando flujos de datos alternativos (ADS) donde se esconden configuraciones de cheats.",
-            'f8': "Decodifica el ROT13 de la clave UserAssist en el registro para ver historial de ejecución de la GUI.",
-            'f9': "Auditoría de dispositivos USB conectados históricamente. Detecta si se ejecutó software desde un pendrive.",
-            'f10': "Vuelca la caché DNS y busca conexiones a dominios conocidos de venta de cheats o servidores de autenticación.",
-            'f11': "Analiza bases de datos de navegadores (Chrome/Edge/Firefox) buscando historial de descargas borrado.",
-            'f12': "Revisa llaves de registro 'Run', carpeta de Inicio y Tareas Programadas buscando persistencia (Autostart).",
-            'f13': "Analiza el Visor de Eventos de Windows buscando fallos de servicios o inyecciones bloqueadas.",
-            'f14': "Escanea la memoria RAM buscando procesos con nombres sospechosos o que coincidan con la lista negra.",
-            'f15': "Motor especializado que busca patrones de Cheats conocidos (Aimbots, Wallhacks, Injectors) en disco.",
-            'f16': "Rastrea el 'Background Activity Moderator' (BAM/DAM) para ver ejecuciones exactas con ruta completa.",
-            'f17': "Verifica la integridad del Kernel, busca 'Test Signing Mode' activado y drivers no firmados.",
-            'f18': "Analiza la carpeta Prefetch para reconstruir la historia de ejecución y descomprime archivos .pf.",
-            'f19': "Analiza conexiones TCP/UDP activas y el historial de comandos de PowerShell.",
-            'f20': "Busca accesos directos (.lnk) rotos o que apunten a ejecutables sospechosos/temporales.",
-            'f21': "Rastrea listas MRU (Most Recently Used) y OpenSavePidl para ver qué archivos abrió el usuario.",
-            'f22': "Escanea la memoria en busca de regiones ejecutables privadas (VADs) y hilos huérfanos (Inyecciones DLL).",
-            'f23': "Compara los drivers cargados en memoria contra el registro para detectar Rootkits o Drivers ocultos.",
-            'f24': "Análisis de Entropía: Detecta archivos 'empacados' o encriptados (altamente sospechoso de malware/cheats).",
-            'f25': "Busca 'Clones': Archivos que tienen el mismo Hash que el archivo objetivo (Target File) pero diferente nombre.",
-            'f26': "Analiza el USN Journal buscando evidencia de borrado masivo de archivos o limpieza de strings."
+            'f1': config.t("f1_desc"),
+            'f2': config.t("f2_desc"),
+            'f3': config.t("f3_desc"),
+            'f4': config.t("f4_desc"),
+            'f5': config.t("f5_desc"),
+            'f6': config.t("f6_desc"),
+            'f7': config.t("f7_desc"),
+            'f8': config.t("f8_desc"),
+            'f9': config.t("f9_desc"),
+            'f10': config.t("f10_desc"),
+            'f11': config.t("f11_desc"),
+            'f12': config.t("f12_desc"),
+            'f13': config.t("f13_desc"),
+            'f14': config.t("f14_desc"),
+            'f15': config.t("f15_desc"),
+            'f16': config.t("f16_desc"),
+            'f17': config.t("f17_desc"),
+            'f18': config.t("f18_desc"),
+            'f19': config.t("f19_desc"),
+            'f20': config.t("f20_desc"),
+            'f21': config.t("f21_desc"),
+            'f22': config.t("f22_desc"),
+            'f23': config.t("f23_desc"),
+            'f24': config.t("f24_desc"),
+            'f25': config.t("f25_desc"),
+            'f26': config.t("f26_desc"),
+            'vt': config.t("vt_desc")
         }
 
         self.anim = CyberRain(self, COLOR_ACCENT)
@@ -665,8 +666,7 @@ class UserConfigFrame(ctk.CTkFrame):
 
         scroll = ctk.CTkScrollableFrame(main, fg_color="transparent")
         scroll.pack(fill="both", expand=True)
-        # Configurar columnas del grid interno del scroll
-        scroll.grid_columnconfigure(0, weight=1) # Columna única para que las tarjetas ocupen todo el ancho
+        scroll.grid_columnconfigure(0, weight=1) 
 
         modules = [
             (config.t("f1"), 'f1'), (config.t("f2"), 'f2'), (config.t("f3"), 'f3'),
@@ -685,7 +685,6 @@ class UserConfigFrame(ctk.CTkFrame):
                  'Full': [m[1] for m in modules]}
         self.alwd = perms.get(config.USER_MEMBERSHIP, [])
 
-        # Crear tarjetas una debajo de otra para dar espacio a la descripción
         for i, (text, key) in enumerate(modules):
             self.create_module_card(scroll, text, key, i)
 
@@ -709,26 +708,20 @@ class UserConfigFrame(ctk.CTkFrame):
         active = key in self.alwd
         color = "#1a002a" if active else "#0a0010"
         
-        # Tarjeta contenedora
         card = ctk.CTkFrame(parent, fg_color=color, corner_radius=10, border_width=1, border_color="#2a003a")
         card.grid(row=row_idx, column=0, padx=5, pady=5, sticky="ew")
         
-        # Configuración del Grid interno de la tarjeta
-        card.grid_columnconfigure(1, weight=1) # El switch toma el espacio
+        card.grid_columnconfigure(1, weight=1) 
         
-        # 1. BOTÓN FLECHA (DESPLEGAR)
-        # Usamos una lambda con argumentos por defecto para capturar las variables locales
         btn_arrow = ctk.CTkButton(card, text="▼", width=25, height=25, fg_color="transparent", 
                                   hover_color="#333", text_color="#888", font=("Arial", 12))
         btn_arrow.grid(row=0, column=0, padx=(10, 5), pady=10)
         
-        # 2. SWITCH (NOMBRE DEL MÓDULO)
         var = ctk.BooleanVar(value=active)
         state = "normal" if active else "disabled"
         sw = ctk.CTkSwitch(card, text=text, variable=var, state=state, progress_color=COLOR_ACCENT, font=("Segoe UI", 12))
         sw.grid(row=0, column=1, padx=5, pady=10, sticky="w")
         
-        # 3. OPTION MENU (MODO)
         mode = tk.StringVar(value=config.t("opt_list"))
         if active and key != 'vt':
             values = [config.t("opt_list")] if key == 'f5' else [config.t("opt_list"), config.t("opt_all")]
@@ -736,13 +729,11 @@ class UserConfigFrame(ctk.CTkFrame):
             if key == 'f5': opt.configure(state="disabled")
             opt.grid(row=0, column=2, padx=10, pady=10)
         
-        # 4. FRAME DE DESCRIPCIÓN (OCULTO INICIALMENTE)
         desc_frame = ctk.CTkFrame(card, fg_color="transparent")
         lbl_desc = ctk.CTkLabel(desc_frame, text=self.descripciones.get(key, "Sin descripción."), 
                                 text_color="#aaa", font=("Consolas", 11), justify="left", wraplength=500)
         lbl_desc.pack(padx=20, pady=(0, 10), anchor="w")
         
-        # Función para alternar visibilidad
         def toggle_desc(f=desc_frame, b=btn_arrow):
             if f.winfo_viewable():
                 f.grid_forget()

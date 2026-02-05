@@ -99,7 +99,7 @@ TRADUCCIONES = {
         "set_title": "CONFIGURACIÓN DEL SISTEMA",
         "lbl_lang": "SELECCIONAR IDIOMA / SELECT LANGUAGE",
         
-        # FASES (Nombres Oficiales)
+        # TITULOS DE FASES
         "f1": "F1: Análisis ShimCache",
         "f2": "F2: Rastros AppCompat",
         "f3": "F3: Chequeo Nombre Original",
@@ -126,7 +126,36 @@ TRADUCCIONES = {
         "f24": "F24: Análisis Estático Deep",
         "f25": "F25: Cazador Metamorfosis",
         "f26": "F26: Limpieza de Strings",
-        "vt": "VT: VirusTotal Cloud"
+        "vt": "VT: VirusTotal Cloud",
+
+        # DESCRIPCIONES DE FASES (ESPAÑOL)
+        "f1_desc": "Muestra un historial de todos los programas ejecutados en la PC, incluso si el archivo ya fue borrado.",
+        "f2_desc": "Rastrea aplicaciones que se abrieron recientemente y quedaron guardadas en la memoria de compatibilidad de Windows.",
+        "f3_desc": "Detecta si alguien le cambió el nombre a un programa para esconderlo (Ej: renombrar 'cheat.exe' a 'chrome.exe').",
+        "f4_desc": "Verifica si los programas son oficiales y seguros (Firmados Digitalmente) o si son archivos desconocidos/peligrosos.",
+        "f5_desc": "Busca palabras clave sospechosas (nombres de hacks conocidos) dentro de las carpetas Descargas, Escritorio y Temporales.",
+        "f6_desc": "Encuentra archivos que el usuario ocultó intencionalmente para que no sean vistos a simple vista.",
+        "f7_desc": "Busca información oculta 'detrás' de archivos normales (técnica usada para esconder configuraciones de trampas).",
+        "f8_desc": "Muestra una lista de programas y accesos directos que el usuario ha clickeado o abierto desde el Escritorio.",
+        "f9_desc": "Historial de todos los Pendrives o discos USB conectados y lista de qué programas se ejecutaron desde ellos.",
+        "f10_desc": "Revisa a qué sitios web se conectó la PC recientemente (útil para ver si visitaron páginas de venta de hacks).",
+        "f11_desc": "Recupera el historial de descargas de navegadores (Chrome, Edge, etc.), incluso si lo borraron del navegador.",
+        "f12_desc": "Detecta programas configurados para iniciarse solos apenas se prende la computadora (Auto-arranque).",
+        "f13_desc": "Busca registros de errores del sistema que ocurren cuando un programa inestable (como un cheat) intenta funcionar.",
+        "f14_desc": "Analiza todo lo que se está ejecutando AHORA MISMO en la memoria de la PC.",
+        "f15_desc": "Buscador especializado que escanea el disco buscando trampas o hacks específicos de juegos conocidos.",
+        "f16_desc": "Informe detallado con fecha y hora exacta de cada programa ejecutado. Muestra si sigue abierto o si ya se cerró.",
+        "f17_desc": "Revisa si el núcleo (corazón) de Windows fue modificado para permitir trampas avanzadas.",
+        "f18_desc": "Analiza la carpeta 'Prefetch' para mostrar cuándo fue la primera y última vez que se usó un programa.",
+        "f19_desc": "Examina las conexiones a internet activas y comandos recientes de red sospechosos.",
+        "f20_desc": "Analiza los accesos directos del sistema para ver si apuntan a archivos sospechosos o que fueron eliminados.",
+        "f21_desc": "Rastrea qué archivos (imágenes, textos, programas) abrió el usuario recientemente en el explorador.",
+        "f22_desc": "Escanea la memoria RAM buscando código intruso inyectado dentro de otros programas legítimos.",
+        "f23_desc": "Detecta controladores (drivers) peligrosos o no oficiales cargados en el sistema.",
+        "f24_desc": "Detecta archivos 'encriptados' o comprimidos de forma extraña (comportamiento típico de virus y cheats privados).",
+        "f25_desc": "Busca copias exactas de un archivo sospechoso en todo el disco, aunque le hayan cambiado el nombre.",
+        "f26_desc": "Detecta si el usuario borró archivos masivamente o usó herramientas de limpieza recientemente para esconder evidencia.",
+        "vt_desc": "Sube el Hash de los archivos a la nube de VirusTotal para ver si 70 antivirus los detectan como maliciosos."
     },
     "en": {
         # LOGIN
@@ -218,7 +247,36 @@ TRADUCCIONES = {
         "f24": "F24: Deep Static Analysis",
         "f25": "F25: Metamorphosis Hunter",
         "f26": "F26: String Cleaning",
-        "vt": "VT: VirusTotal Cloud"
+        "vt": "VT: VirusTotal Cloud",
+
+        # DESCRIPCIONES DE FASES (ENGLISH)
+        "f1_desc": "Shows a history of all programs executed on the PC, even if the file has already been deleted.",
+        "f2_desc": "Tracks applications that were recently opened and stored in Windows compatibility memory.",
+        "f3_desc": "Detects if someone renamed a program to hide it (e.g., renaming 'cheat.exe' to 'chrome.exe').",
+        "f4_desc": "Verifies if programs are official and safe (Digitally Signed) or unknown/dangerous files.",
+        "f5_desc": "Searches for suspicious keywords (known hack names) in Downloads, Desktop, and Temp folders.",
+        "f6_desc": "Finds files that the user intentionally hid to avoid detection.",
+        "f7_desc": "Looks for hidden information 'behind' normal files (technique used to hide cheat configs).",
+        "f8_desc": "Shows a list of programs and shortcuts the user has clicked or opened from the Desktop.",
+        "f9_desc": "History of all USB drives connected and a list of programs executed from them.",
+        "f10_desc": "Checks recently visited websites (useful to see if they visited hack selling sites).",
+        "f11_desc": "Recovers browser download history (Chrome, Edge, etc.), even if cleared from the browser.",
+        "f12_desc": "Detects programs configured to start automatically when the computer turns on.",
+        "f13_desc": "Searches for system error logs that occur when unstable software (like a cheat) tries to run.",
+        "f14_desc": "Analyzes everything currently running in the PC's memory.",
+        "f15_desc": "Specialized scanner that searches the disk for specific cheats or hacks for known games.",
+        "f16_desc": "Detailed report with exact date/time of each executed program. Shows if it's still open or closed.",
+        "f17_desc": "Checks if the Windows kernel (core) has been modified to allow advanced cheats.",
+        "f18_desc": "Analyzes the 'Prefetch' folder to show when a program was first and last used.",
+        "f19_desc": "Examines active internet connections and recent suspicious network commands.",
+        "f20_desc": "Analyses system shortcuts to see if they point to suspicious or deleted files.",
+        "f21_desc": "Tracks files (images, texts, programs) the user recently opened in Explorer.",
+        "f22_desc": "Scans RAM for intrusive code injected into other legitimate programs.",
+        "f23_desc": "Detects dangerous or unofficial drivers loaded into the system.",
+        "f24_desc": "Detects 'encrypted' or strangely compressed files (typical behavior of viruses and private cheats).",
+        "f25_desc": "Searches for exact copies of a suspicious file across the entire disk, even if renamed.",
+        "f26_desc": "Detects if the user mass-deleted files or used cleaning tools recently to hide evidence.",
+        "vt_desc": "Uploads file Hash to VirusTotal cloud to see if 70 antiviruses detect them as malicious."
     }
 }
 
