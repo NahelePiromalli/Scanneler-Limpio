@@ -1,0 +1,7 @@
+password
+admin
+login
+secret
+config
+key
+token
