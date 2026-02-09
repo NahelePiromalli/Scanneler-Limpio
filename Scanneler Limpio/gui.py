@@ -677,7 +677,7 @@ class UserConfigFrame(ctk.CTkFrame):
             (config.t("f16"), 'f16'), (config.t("f17"), 'f17'), (config.t("f18"), 'f18'),
             (config.t("f19"), 'f19'), (config.t("f20"), 'f20'), (config.t("f21"), 'f21'),
             (config.t("f22"), 'f22'), (config.t("f23"), 'f23'), (config.t("f24"), 'f24'),
-            (config.t("f25"), 'f25'), (config.t("f26"), 'f26'), (config.t("vt"), 'vt')
+            (config.t("f25"), 'f25'), (config.t("f26"), 'f26'),  (config.t("vt"), 'vt')
         ]
         
         perms = {'Basic': ['f1','f2','f3','f5','f7','f8','f9','f18','f20'], 

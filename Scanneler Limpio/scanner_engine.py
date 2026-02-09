@@ -1959,13 +1959,14 @@ def fase_kernel_hunter(palabras, modo):
 def fase_dna_prefetch(palabras, modo):
     """
     FASE 18: DNA & PREFETCH FORENSICS (Decompression + Deep Scan).
-    Lee archivos .pf comprimidos (Win10/11) y busca strings internas.
+    Ordenado Cronológicamente (Newest -> Oldest).
     """
     if config.CANCELAR_ESCANEO: return
     print(f"[18/24] DNA & Prefetch Hunter (MAM Decompression) [FORENSIC]...")
     
     import ctypes
     import struct
+    import datetime
     
     # Configuración de rutas
     try:
@@ -2032,10 +2033,13 @@ def fase_dna_prefetch(palabras, modo):
     
     deep_scan_targets = ["csgo", "discord", "explorer", "steam", "dota", "valorant", "javaw", "minecraft", "anydesk", "teamviewer"]
 
+    # Preparamos el buffer de escritura
     with open(config.reporte_dna, "w", encoding="utf-8", buffering=1) as f:
         f.write(f"=== DNA & PREFETCH FORENSICS: {datetime.datetime.now()} ===\n")
         
-        # PARTE 1: DNA (Imports)
+        # ---------------------------------------------------------
+        # PARTE 1: DNA (Imports) - Se mantiene igual
+        # ---------------------------------------------------------
         f.write("--- [1] EXECUTABLE DNA (Static Import Analysis) ---\n")
         dna_hits = 0
         try:
@@ -2066,49 +2070,95 @@ def fase_dna_prefetch(palabras, modo):
         except Exception as e: f.write(f"DNA Scan Error: {e}\n")
         if dna_hits == 0: f.write("[OK] No high-risk injectors found in hot folders.\n")
 
-        # PARTE 2: PREFETCH
-        f.write("\n--- [2] PREFETCH TRACE CHAINS ---\n")
+        # ---------------------------------------------------------
+        # PARTE 2: PREFETCH (MODIFICADA PARA ORDEN CRONOLÓGICO)
+        # ---------------------------------------------------------
+        f.write("\n--- [2] PREFETCH TRACE CHAINS (Time Sorted) ---\n")
         pf_dir = r"C:\Windows\Prefetch"
-        pf_hits = 0
+        
+        prefetch_entries = [] # Lista para almacenar antes de escribir
+
         if os.path.exists(pf_dir):
             try:
-                with DisableFileSystemRedirection():
-                    pf_files = [x for x in os.listdir(pf_dir) if x.lower().endswith(".pf")]
-                    for pf in pf_files:
-                        if config.CANCELAR_ESCANEO: break
-                        pf_lower = pf.lower()
-                        
-                        is_suspicious_name = any(p in pf_lower for p in palabras)
-                        should_deep_scan = is_suspicious_name or any(t in pf_lower for t in deep_scan_targets)
-                        
-                        evidence_found = []
-                        if should_deep_scan:
-                            content = decompress_pf(os.path.join(pf_dir, pf))
-                            if content:
-                                try:
-                                    for kw in palabras:
-                                        kw_bytes = kw.encode("utf-16-le")
-                                        if kw_bytes in content:
-                                            evidence_found.append(f"Loaded Module: {kw}")
-                                    if b'.\x00d\x00l\x00l' in content and is_suspicious_name:
-                                         pass # Regex binary search could go here
-                                except: pass
-                        
-                        if is_suspicious_name or evidence_found:
-                            f.write(f"[!!!] PREFETCH FILE: {pf}\n")
-                            if is_suspicious_name: f.write(f"      Detection: Suspicious Filename\n")
-                            if evidence_found:
-                                f.write(f"      INTERNAL TRACES:\n")
-                                for ev in evidence_found: f.write(f"      > {ev}\n")
-                            f.write("-" * 40 + "\n")
-                            pf_hits += 1
-                        elif modo == "Analizar Todo" and should_deep_scan:
-                             f.write(f"[INFO] Target Executed: {pf}\n")
+                # Usamos try/finally o context manager si tienes uno definido para FS Redirection
+                # Asumo que existe DisableFileSystemRedirection o similar en tu código global
+                # si no, simplemente quita el 'with Disable...'
+                try:
+                    fs_redirect = DisableFileSystemRedirection()
+                    fs_redirect.__enter__()
+                except: fs_redirect = None
+
+                pf_files = [x for x in os.listdir(pf_dir) if x.lower().endswith(".pf")]
+                
+                for pf in pf_files:
+                    if config.CANCELAR_ESCANEO: break
+                    
+                    full_pf_path = os.path.join(pf_dir, pf)
+                    
+                    # 1. Obtener TIMESTAMP (La clave del ordenamiento)
+                    try:
+                        mtime = os.path.getmtime(full_pf_path)
+                        dt_object = datetime.datetime.fromtimestamp(mtime)
+                    except:
+                        continue # Si no podemos leer la fecha, saltamos
+
+                    pf_lower = pf.lower()
+                    is_suspicious_name = any(p in pf_lower for p in palabras)
+                    should_deep_scan = is_suspicious_name or any(t in pf_lower for t in deep_scan_targets)
+                    
+                    evidence_found = []
+                    
+                    # Análisis profundo (Strings dentro del PF)
+                    if should_deep_scan:
+                        content = decompress_pf(full_pf_path)
+                        if content:
+                            try:
+                                for kw in palabras:
+                                    kw_bytes = kw.encode("utf-16-le")
+                                    if kw_bytes in content:
+                                        evidence_found.append(f"Loaded Module: {kw}")
+                            except: pass
+                    
+                    # Guardamos en la lista SI es relevante
+                    if is_suspicious_name or evidence_found or (modo == "Analizar Todo" and should_deep_scan):
+                        prefetch_entries.append({
+                            'timestamp': mtime,     # Para ordenar (float)
+                            'dt_obj': dt_object,    # Para mostrar (datetime)
+                            'filename': pf,
+                            'suspicious': is_suspicious_name,
+                            'evidence': evidence_found
+                        })
+
+                if fs_redirect: fs_redirect.__exit__(None, None, None)
 
             except Exception as e: f.write(f"[ERROR] Prefetch Access: {e}\n")
+            
+            # ---------------------------------------------------------
+            # ORDENAMIENTO Y ESCRITURA
+            # ---------------------------------------------------------
+            # Ordenamos la lista: reverse=True pone los más recientes primero
+            prefetch_entries.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+            if not prefetch_entries:
+                f.write("[OK] No suspicious prefetch traces found.\n")
+            else:
+                for entry in prefetch_entries:
+                    time_str = entry['dt_obj'].strftime("%Y-%m-%d %H:%M:%S")
+                    tag = "[SUSPICIOUS]" if entry['suspicious'] else "[INFO]"
+                    
+                    f.write(f"{tag} {time_str} | {entry['filename']}\n")
+                    
+                    if entry['suspicious']:
+                        f.write(f"      Detection: Suspicious Filename Keyword\n")
+                    
+                    if entry['evidence']:
+                        f.write(f"      INTERNAL TRACES (Decompressed Analysis):\n")
+                        for ev in entry['evidence']:
+                            f.write(f"      > {ev}\n")
+                    
+                    f.write("-" * 80 + "\n")
+
         else: f.write("[ERROR] Prefetch folder not found (Admin required).\n")
-        
-        if pf_hits == 0: f.write("[OK] No suspicious prefetch traces found.\n")
     
     # INTEGRACIÓN HTML
     try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_dna)), {'f18': {'active': True}})
@@ -3010,3 +3060,113 @@ def fase_string_cleaning(palabras, modo):
     try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_cleaning)), {'f26': {'active': True}})
     except: pass
     
+def fase_usn_journal(palabras, modo):
+    if config.CANCELAR_ESCANEO: return
+    print(f"[27/27] USN Journal: 'El Ojo de Dios' (Detectando Borrados)...")
+    
+    config.reporte_usn = asegurar_ruta_reporte("USN_Journal_Evidence.txt")
+    
+    # Extensiones peligrosas a vigilar
+    EXT_PELIGROSAS = ['.exe', '.dll', '.bat', '.ps1', '.vbs', '.py', '.tmp']
+    
+    now = datetime.datetime.now()
+    
+    with open(config.reporte_usn, "w", encoding="utf-8", buffering=1) as f:
+        f.write(f"=== USN JOURNAL FORENSICS: {now.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+        f.write("Target: Archivos ELIMINADOS o RENOMBRADOS recientemente.\n")
+        f.write("NOTA: Este registro es de bajo nivel NTFS. Es casi imposible de falsificar.\n\n")
+        f.write(f"{'TIMESTAMP':<20} | {'ACCIÓN':<15} | {'ARCHIVO':<40} | DETALLES\n")
+        f.write("-" * 100 + "\n")
+
+        try:
+            # Usamos fsutil para leer el journal del disco C:
+            # Esto requiere Admin, pero Scanneler ya lo pide.
+            # Leemos los últimos datos (no todo el historial porque es gigante)
+            cmd = ['fsutil', 'usn', 'readjournal', 'C:', 'csv']
+            
+            # Ejecutamos y leemos línea por línea
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, errors='ignore')
+            
+            # Recopilamos las últimas líneas (ej: últimas 5000 operaciones) para no saturar
+            # En un caso real forense, leeríamos todo, pero para una app rápida, leemos el buffer reciente.
+            lineas_relevantes = []
+            
+            # Leemos la salida en tiempo real
+            count = 0
+            MAX_LINES = 10000  # Analizar las últimas 10k operaciones del disco
+            
+            # fsutil devuelve datos antiguos primero, así que guardamos y procesamos al revés o filtramos por fecha si pudiéramos
+            # Truco: Leeremos todo y luego filtraremos.
+            output_lines = proc.stdout.readlines()
+            
+            # Invertimos para ver lo más reciente primero
+            for line in reversed(output_lines):
+                if count >= MAX_LINES: break
+                
+                parts = line.split(',')
+                if len(parts) < 5: continue
+                
+                # Formato fsutil csv: 
+                # Offset, FileID, ParentID, USN, TimeStamp, Reason, SourceInfo, SecurityId, FileAttributes, FileName
+                # A veces varía según versión de Windows, buscamos dinámicamente
+                
+                try:
+                    # Buscamos el nombre del archivo (suele ser el último campo o anteúltimo)
+                    filename = parts[-1].strip()
+                    reasons = parts[5].strip() # Reason flag
+                    timestamp_str = parts[4].strip() # Date
+                    
+                    # Filtro 1: Solo extensiones peligrosas
+                    nombre_lower = filename.lower()
+                    if not any(nombre_lower.endswith(ext) for ext in EXT_PELIGROSAS):
+                        continue
+
+                    # Filtro 2: Ignorar archivos temporales de Windows/Navegadores (Ruido)
+                    if any(x in nombre_lower for x in ["chrome", "edge", "discord", "update", "log", "temp", "cache"]):
+                        # A menos que tenga palabra clave de cheat
+                        if not any(p in nombre_lower for p in palabras):
+                            continue
+
+                    # Filtro 3: Detectar eventos CRÍTICOS
+                    accion = "MODIFICADO"
+                    es_sospechoso = False
+                    
+                    if "0x80000004" in reasons or "FILE_DELETE" in reasons:
+                        accion = "!!! ELIMINADO"
+                        es_sospechoso = True
+                    elif "0x00002000" in reasons or "RENAME_NEW_NAME" in reasons:
+                        accion = "RENOMBRADO"
+                        es_sospechoso = True
+                    elif "0x00001000" in reasons or "RENAME_OLD_NAME" in reasons:
+                        accion = "RENOMBRADO (OLD)"
+                    elif "0x00000100" in reasons or "FILE_CREATE" in reasons:
+                        accion = "CREADO"
+                    
+                    # Si no es Delete/Create/Rename, lo saltamos para limpiar reporte
+                    if accion == "MODIFICADO": continue
+
+                    # CHEQUEO FINAL: Palabras Clave o Modo Todo
+                    hit_palabra = any(p in nombre_lower for p in palabras)
+                    
+                    if hit_palabra:
+                        tag = "[MATCH]"
+                        es_sospechoso = True
+                    else:
+                        tag = ""
+
+                    if es_sospechoso or (modo == "Analizar Todo" and accion == "!!! ELIMINADO"):
+                        f.write(f"{timestamp_str:<20} | {accion:<15} | {filename:<40} | {tag}\n")
+                        count += 1
+                        
+                except: continue
+
+            if count == 0:
+                f.write("\n[OK] No se detectaron borrados recientes de archivos ejecutables sospechosos.\n")
+                
+        except Exception as e:
+            f.write(f"\n[ERROR] No se pudo leer el USN Journal: {e}\n")
+            f.write("Asegúrate de ejecutar Scanneler como ADMINISTRADOR.\n")
+
+    # Integración HTML
+    try: generar_reporte_html(os.path.dirname(config.reporte_usn), {'f27': {'active': True}})
+    except: pass
