@@ -10,6 +10,7 @@ import time
 import requests  # <--- Requiere pip install requests
 import codecs
 import sqlite3
+import json
 import shutil
 import re
 import math
@@ -1398,87 +1399,229 @@ def fase_persistence(palabras, modo):
     try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_persistencia)), {'f12': {'active': True}})
     except: pass
 
-# --- F13: EVENT LOGS ---
 def fase_event_logs(palabras, modo):
+    """
+    FASE 13: WINDOWS DEFENDER & USN JOURNAL (UNIVERSAL PARSER)
+    - [1] ACTIVAS: Estado actual.
+    - [2] QUITADAS: VSS.
+    - [3] USN JOURNAL: Extracción basada en posición relativa a la FECHA.
+    """
     if config.CANCELAR_ESCANEO: return
-    print(f"[13/26] Windows Event Log Forensics [DEEP SCAN]...")
-    
-    # Asegurar ruta
-    if not config.reporte_eventos: config.reporte_eventos = "Events.txt"
 
-    cmds = [
-        ("SECURITY_LOG_CLEARED", "Get-WinEvent -FilterHashtable @{LogName='Security'; ID=1102} -MaxEvents 5 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='User';E={$_.Properties[1].Value}}, Message"),
-        ("SYSTEM_LOG_CLEARED", "Get-WinEvent -FilterHashtable @{LogName='System'; ID=104} -MaxEvents 5 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='User';E={$_.Properties[0].Value}}, Message"),
-        ("NEW_SERVICE_INSTALLED", "Get-WinEvent -FilterHashtable @{LogName='System'; ID=7045} -MaxEvents 30 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='ServiceName';E={$_.Properties[0].Value}}, @{N='ImagePath';E={$_.Properties[1].Value}}, @{N='ServiceType';E={$_.Properties[2].Value}}"),
-        ("DEFENDER_EXCLUSION_ADDED", "Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; ID=5007} -MaxEvents 10 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='Path';E={$_.Properties[1].Value}}, Message"),
-        ("DEFENDER_THREAT_FOUND", "Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; ID=1116,1117} -MaxEvents 10 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='Threat';E={$_.Properties[0].Value}}, @{N='Path';E={$_.Properties[1].Value}}"),
-        ("PROCESS_STARTED", "Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4688} -MaxEvents 50 -ErrorAction SilentlyContinue | Select-Object @{N='Time';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}}, @{N='Process';E={$_.Properties[5].Value}}, @{N='CommandLine';E={$_.Properties[8].Value}}")
-    ]
-    
-    with open(config.reporte_eventos, "w", encoding="utf-8", buffering=1) as f:
-        f.write(f"=== WINDOWS EVENT LOG FORENSICS: {datetime.datetime.now()} ===\n")
-        f.write("Scanning for: Log Wiping, Kernel Drivers, AV Exclusions & Threats.\n\n")
+    print(f"[13/26] Windows Defender & USN Journal (Universal Audit)...")
+
+    if not config.reporte_eventos: config.reporte_eventos = "Events_Forensics.txt"
+
+    # =========================================================================
+    # POWERSHELL SCRIPT
+    # =========================================================================
+    ps_command = r"""
+    $ErrorActionPreference = "SilentlyContinue"
+    $Results = @()
+
+    # --- 1. ACTIVAS ---
+    $Current = Get-MpPreference
+    $ActivePaths = if ($Current.ExclusionPath) { @($Current.ExclusionPath) } else { @() }
+    $ActiveProcs = if ($Current.ExclusionProcess) { @($Current.ExclusionProcess) } else { @() }
+    $Results += @{ Type="ACTIVE"; Data=@{ Paths=$ActivePaths; Procs=$ActiveProcs } }
+
+    # --- 2. VSS (QUITADAS) ---
+    $Shadow = Get-WmiObject Win32_ShadowCopy | Sort-Object InstallDate -Descending | Select-Object -First 1
+    if ($Shadow) {
+        $ShadowDate = $Shadow.InstallDate
+        $DevicePath = $Shadow.DeviceObject
+        $MountName = "DEFENDER_VSS_TEMP"
+        reg unload "HKLM\$MountName" 2>$null | Out-Null
+        reg load "HKLM\$MountName" "$DevicePath\Windows\System32\config\SOFTWARE" 2>$null | Out-Null
         
-        for tit, ps in cmds:
-            f.write(f"--- {tit} ---\n")
-            try:
-                proc = subprocess.Popen(f'powershell -NoProfile -Command "{ps} | Format-List"', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True, encoding='cp850', errors='ignore', creationflags=0x08000000)
-                out, err = proc.communicate()
+        if ($LASTEXITCODE -eq 0) {
+            $VSS_Base = "HKLM:\$MountName\Microsoft\Windows Defender\Exclusions"
+            $Deleted = @()
+            if (Test-Path "$VSS_Base\Paths") {
+                Get-ItemProperty -Path "$VSS_Base\Paths" | Select-Object * -ExcludeProperty "PS*" | ForEach-Object {
+                    $_.PSObject.Properties | ForEach-Object {
+                        if ($_.Name -notin $ActivePaths) { 
+                            $Deleted += @{ Target=$_.Name; Category="PATH"; FoundIn=$ShadowDate } 
+                        }
+                    }
+                }
+            }
+            $Results += @{ Type="DELETED_VSS"; Data=$Deleted }
+            [gc]::Collect()
+            reg unload "HKLM\$MountName" 2>$null | Out-Null
+        }
+    }
+
+    # --- 3. USN JOURNAL (PARSEO RELATIVO A FECHA) ---
+    try {
+        # Traemos los últimos 200 eventos crudos
+        $USN_Raw = fsutil usn readjournal C: csv | Select-Object -Last 200
+        
+        $JournalEvents = @()
+
+        foreach ($Line in $USN_Raw) {
+            $LineStr = $Line.ToString()
+            
+            # 1. ENCONTRAR LA FECHA (El ancla)
+            # Buscamos el patrón "dd/mm/yyyy hh:mm:ss" (con o sin comillas)
+            # Regex: \d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}
+            
+            if ($LineStr -match "(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2})") {
+                $FullDate = $Matches[1]
                 
-                if not out or "No se encontraron" in err or "NoMatchingEventsFound" in err:
-                    f.write("   [OK] Clean. No events found.\n")
-                else:
-                    bloque = []
-                    for line in out.splitlines():
-                        line = line.strip()
-                        if not line:
-                            if bloque:
-                                txt_bloque = "\n".join(bloque)
-                                es_sospechoso = False
-                                tag = ""
-                                
-                                if "LOG_CLEARED" in tit: 
-                                    tag = "[!!!] EVIDENCE DESTROYED (LOG WIPED)"
-                                    es_sospechoso = True
-                                elif "NEW_SERVICE" in tit:
-                                    if "AppData" in txt_bloque or "Temp" in txt_bloque: 
-                                        tag = "[!!!] KERNEL CHEAT DRIVER"
-                                        es_sospechoso = True
-                                    elif ".sys" in txt_bloque.lower():
-                                        if "Intel" not in txt_bloque and "NVIDIA" not in txt_bloque:
-                                            tag = "[WARN] SUSPICIOUS DRIVER LOAD"
-                                            if modo == "Analizar Todo": es_sospechoso = True
-                                elif "DEFENDER_EXCLUSION" in tit: 
-                                    tag = "[WARN] ANTIVIRUS BYPASS PATH"
-                                    es_sospechoso = True
-                                elif "THREAT_FOUND" in tit: 
-                                    tag = "[!!!] MALWARE DETECTED"
-                                    es_sospechoso = True
-                                elif "PROCESS_STARTED" in tit:
-                                    if any(p in txt_bloque.lower() for p in palabras): 
-                                        tag = "[ALERTA] KEYWORD MATCH"
-                                        es_sospechoso = True
-                                        
-                                if es_sospechoso or modo == "Analizar Todo":
-                                    if tag: f.write(f"{tag}\n")
-                                    for l in bloque: f.write(f"   {l}\n")
-                                    f.write("   " + "-"*40 + "\n")
-                                bloque = []
-                        else: 
-                            bloque.append(line)
-                            
-                    # Procesar último bloque
-                    if bloque:
-                         if "LOG_CLEARED" in tit: f.write(f"[!!!] LOG WIPED\n")
-                         for l in bloque: f.write(f"   {l}\n")
-                         
-            except Exception as e:
-                f.write(f"   [ERROR] Failed to query events: {e}\n")
+                # 2. SEPARAR LO QUE HAY ANTES Y DESPUÉS DE LA FECHA
+                $SplitParts = $LineStr -split [regex]::Escape($FullDate)
+                
+                if ($SplitParts.Count -ge 2) {
+                    $PreDate = $SplitParts[0]  # Aquí está la Razón (Action)
+                    $PostDate = $SplitParts[1] # Aquí está el Nombre del Archivo (+ basura numérica)
+
+                    # --- A. ANALIZAR ACCIÓN (PRE-DATE) ---
+                    $Action = "OTRO"
+                    if ($PreDate -match "Elimina" -or $PreDate -match "Borrado" -or $PreDate -match "0x8") { $Action = "BORRADO (Deleted)" }
+                    elseif ($PreDate -match "Creaci" -or $PreDate -match "Nacido" -or $PreDate -match "0x100") { $Action = "CREADO (Born)" }
+                    elseif ($PreDate -match "Renombrado" -or $PreDate -match "0x2000") { $Action = "RENOMBRADO" }
+                    elseif ($PreDate -match "Truncamiento" -or $PreDate -match "Datos escritos" -or $PreDate -match "0x0") { $Action = "MODIFICADO" }
+
+                    # --- B. ANALIZAR NOMBRE (POST-DATE) ---
+                    # PostDate será algo como: " | 120 " o " | 128 | mi_archivo.exe"
+                    # Eliminamos comas, comillas y espacios de los bordes
+                    $RawName = $PostDate.Trim().Trim(',').Trim('"')
+                    
+                    # DIVIDIMOS POR ESPACIOS O COMAS para encontrar texto real
+                    # Los atributos suelen ser números solos (120, 128, 32). El nombre tiene letras.
+                    $NameParts = $RawName -split "[, ]+"
+                    $RealFileName = ""
+
+                    # Recorremos las partes buscando la que NO sea un número simple
+                    foreach ($part in $NameParts) {
+                        $part = $part.Trim()
+                        # Si tiene letras o puntos, es el archivo
+                        if ($part -match "[a-zA-Z\.]" -and $part -notmatch "^\d+$") {
+                            $RealFileName = $part
+                        }
+                        # Si ya tenemos un nombre y viene otro texto, concatenamos (nombres con espacios)
+                        elseif ($RealFileName -ne "" -and $part -ne "") {
+                             $RealFileName = "$RealFileName $part"
+                        }
+                    }
+
+                    # --- GUARDAR RESULTADO ---
+                    # Filtros de ruido
+                    if ($RealFileName -ne "" -and $RealFileName -notmatch "^\$" -and $RealFileName -notmatch "\.tmp$") {
+                         if ($Action -ne "OTRO") {
+                            $JournalEvents += @{
+                                Action = $Action
+                                File   = $RealFileName
+                                Date   = $FullDate
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        $Results += @{ Type="USN_JOURNAL"; Data=$JournalEvents }
+
+    } catch {
+        $Results += @{ Type="ERROR_USN"; Msg=$_.Exception.Message }
+    }
+
+    $Results | ConvertTo-Json -Depth 4 -Compress
+    """
+
+    with open(config.reporte_eventos, "w", encoding="utf-8", buffering=1) as f:
+        f.write(f"=== DEFENDER & USN FORENSICS REPORT ===\n")
+        f.write(f"Scan Time: {datetime.datetime.now()}\n\n")
+
+        try:
+            # Ejecutar PS
+            proc = subprocess.Popen(['powershell', '-NoProfile', '-Command', ps_command], 
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                    text=True, encoding='utf-8', errors='ignore', creationflags=0x08000000)
+            out, err = proc.communicate()
+            
+            if not out.strip():
+                f.write("[INFO] No data retrieved (Admin privileges required).\n")
+                return
+
+            try:
+                data_list = json.loads(out)
+                if isinstance(data_list, dict): data_list = [data_list]
+            except:
+                data_list = []
+                f.write("[ERROR] JSON Parse Error.\n")
+
+            active_output = []
+            deleted_output = []
+            usn_timeline = []
+
+            for entry in data_list:
+                mtype = entry.get("Type")
+                data = entry.get("Data")
+                if not data: continue
+
+                if mtype == "ACTIVE":
+                    paths = data.get("Paths") or []
+                    if isinstance(paths, str): paths = [paths]
+                    for p in paths: active_output.append(f"PATH: {p}")
+                
+                elif mtype == "DELETED_VSS":
+                    if isinstance(data, dict): data = [data]
+                    for x in data:
+                        target = x.get("Target")
+                        date = x.get("FoundIn")
+                        deleted_output.append(f"Target: {target} (Backup: {date})")
+
+                elif mtype == "USN_JOURNAL":
+                    if isinstance(data, dict): data = [data]
+                    for x in data:
+                        action = x.get("Action")
+                        fname = x.get("File")
+                        date = x.get("Date")
+                        
+                        symbol = "[?]"
+                        if "BORRADO" in action: symbol = "[X]"
+                        elif "CREADO" in action: symbol = "[+]"
+                        elif "MODIFICADO" in action: symbol = "[M]"
+                        elif "RENOMBRADO" in action: symbol = "[R]"
+
+                        usn_timeline.append(f"{symbol} {date} | {action} | {fname}")
+
+            # --- ESCRITURA FINAL ---
+            f.write("==================================================\n")
+            f.write("[1] EXCLUSIONES ACTIVAS (PRESENT)\n")
+            f.write("==================================================\n")
+            if active_output:
+                for x in active_output: f.write(f"[!!!] {x}\n")
+            else: f.write("[OK] Clean.\n")
             f.write("\n")
 
-    # INTEGRACIÓN: Actualizar HTML
+            f.write("==================================================\n")
+            f.write("[2] EXCLUSIONES ELIMINADAS (VSS BACKUP CHECK)\n")
+            f.write("==================================================\n")
+            if deleted_output:
+                for x in deleted_output: f.write(f"[REMOVED] {x}\n{'-'*40}\n")
+            else: f.write("[OK] Registry matches the last backup.\n")
+            f.write("\n")
+
+            f.write("==================================================\n")
+            f.write("[3] ACTIVIDAD DE DISCO (UNIVERSAL PARSER)\n")
+            f.write("    [Icono] Fecha Hora | Acción | Nombre del Archivo\n")
+            f.write("==================================================\n")
+            
+            if usn_timeline:
+                # Invertir para mostrar lo más reciente arriba
+                for x in reversed(usn_timeline):
+                    f.write(f"{x}\n")
+            else:
+                f.write("[INFO] No file activity retrieved.\n")
+
+        except Exception as e:
+            f.write(f"[CRITICAL ERROR] {e}\n")
+
     try: generar_reporte_html(os.path.dirname(os.path.abspath(config.reporte_eventos)), {'f13': {'active': True}})
     except: pass
+
 
 
 # --- F14: PROCESS HUNTER (OPTIMIZADA) ---
