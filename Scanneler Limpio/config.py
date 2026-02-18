@@ -81,7 +81,7 @@ TRADUCCIONES = {
         "btn_update": "ACTUALIZAR",
         "btn_refresh": "RECARGAR",
         "lbl_gen_lic": "GENERADOR DE LICENCIAS",
-        "lbl_memb": "MEMBRESÍA:",
+        "lbl_memb": "MEMBERSHIP:",
         "lbl_dur": "DURACIÓN:",
         "lbl_qty": "CANTIDAD:",
         "btn_gen": "GENERAR KEYS",
@@ -126,6 +126,8 @@ TRADUCCIONES = {
         "f24": "F24: Análisis Estático Deep",
         "f25": "F25: Cazador Metamorfosis",
         "f26": "F26: Limpieza de Strings",
+        "f27": "F27: Bypass Detecter",
+        "f28": "F28: Inteligencia Amcache", # [NUEVO]
         "vt": "VT: VirusTotal Cloud",
 
         # DESCRIPCIONES DE FASES (ESPAÑOL)
@@ -155,6 +157,8 @@ TRADUCCIONES = {
         "f24_desc": "Detecta archivos 'encriptados' o comprimidos de forma extraña (comportamiento típico de virus y cheats privados).",
         "f25_desc": "Busca copias exactas de un archivo sospechoso en todo el disco, aunque le hayan cambiado el nombre.",
         "f26_desc": "Detecta si el usuario borró archivos masivamente o usó herramientas de limpieza recientemente para esconder evidencia.",
+        "f27_desc": "Detecta programas ejecutados que se autodestruyeron, archivos huérfanos y manipulación de registros forenses (Bypass Detecter).",
+        "f28_desc": "Analiza la identidad real (Hash y Metadatos) de los archivos. Revela el nombre original de fábrica para detectar si un programa fue renombrado para camuflarse.", # [NUEVO]
         "vt_desc": "Sube el Hash de los archivos a la nube de VirusTotal para ver si 70 antivirus los detectan como maliciosos."
     },
     "en": {
@@ -247,6 +251,8 @@ TRADUCCIONES = {
         "f24": "F24: Deep Static Analysis",
         "f25": "F25: Metamorphosis Hunter",
         "f26": "F26: String Cleaning",
+        "f27": "F27: Master Anti-Forensics (Bypass Detecter)",
+        "f28": "F28: Amcache Full Intelligence", # [NUEVO]
         "vt": "VT: VirusTotal Cloud",
 
         # DESCRIPCIONES DE FASES (ENGLISH)
@@ -276,6 +282,8 @@ TRADUCCIONES = {
         "f24_desc": "Detects 'encrypted' or strangely compressed files (typical behavior of viruses and private cheats).",
         "f25_desc": "Searches for exact copies of a suspicious file across the entire disk, even if renamed.",
         "f26_desc": "Detects if the user mass-deleted files or used cleaning tools recently to hide evidence.",
+        "f27_desc": "Detects programs that self-destructed, orphan files, and forensic record tampering (Bypass Detecter).",
+        "f28_desc": "Analyzes the real identity (Hash & Metadata) of files. Reveals the original factory name to detect if a program was renamed to camouflage itself.", # [NUEVO]
         "vt_desc": "Uploads file Hash to VirusTotal cloud to see if 70 antiviruses detect them as malicious."
     }
 }
@@ -327,4 +335,6 @@ reporte_drivers = ""
 reporte_static = ""
 reporte_morph = ""
 reporte_cleaning = ""
+reporte_antiforensics = "" # [F27] - Bypass Detecter
+reporte_amcache = ""       # [F28] - Amcache Intelligence
 reporte_vt = "detecciones_virustotal.txt"

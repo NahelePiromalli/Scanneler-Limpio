@@ -621,6 +621,8 @@ class UserConfigFrame(ctk.CTkFrame):
             'f24': config.t("f24_desc"),
             'f25': config.t("f25_desc"),
             'f26': config.t("f26_desc"),
+            'f27': config.t("f27_desc"),
+            'f28': config.t("f28_desc"),
             'vt': config.t("vt_desc")
         }
 
@@ -677,7 +679,8 @@ class UserConfigFrame(ctk.CTkFrame):
             (config.t("f16"), 'f16'), (config.t("f17"), 'f17'), (config.t("f18"), 'f18'),
             (config.t("f19"), 'f19'), (config.t("f20"), 'f20'), (config.t("f21"), 'f21'),
             (config.t("f22"), 'f22'), (config.t("f23"), 'f23'), (config.t("f24"), 'f24'),
-            (config.t("f25"), 'f25'), (config.t("f26"), 'f26'),  (config.t("vt"), 'vt')
+            (config.t("f25"), 'f25'), (config.t("f26"), 'f26'), (config.t("f27"), 'f27'),
+            (config.t("f28"), 'f28'), (config.t("vt"), 'vt')
         ]
         
         perms = {'Basic': ['f1','f2','f3','f5','f7','f8','f9','f18','f20'], 
@@ -797,7 +800,8 @@ class ScannerFrame(ctk.CTkFrame):
         ctk.CTkButton(box, text=config.t("btn_abort"), command=self.stop, fg_color=COLOR_DANGER, hover_color="#990000", height=45, width=200).pack(pady=40)
         
         self.cola_estado = Queue()
-        # CORREGIDO: Se lanza el hilo sin argumentos porque run_scan usa self.*
+        
+        # AQUI SE LANZA EL HILO. COMO run_scan AHORA ES METODO DE LA CLASE, FUNCIONARÁ.
         threading.Thread(target=self.run_scan, daemon=True).start()
         self.check_queue()
 
@@ -822,10 +826,11 @@ class ScannerFrame(ctk.CTkFrame):
         if not config.CANCELAR_ESCANEO: self.after(100, self.check_queue)
         else: self.controller.switch_frame(MenuFrame)
 
+    # === AQUI COMIENZA run_scan DENTRO DE LA CLASE (INDENTADO) ===
     def run_scan(self):
         """
         Ejecuta el escaneo en un hilo separado.
-        Reemplaza la función antigua para manejar los argumentos correctamente.
+        ACTUALIZADO: Fase 27 nombrada como 'Bypass Detecter'.
         """
         # 1. Configurar Rutas
         bd = self.rutas.get('path', os.path.abspath("."))
@@ -865,6 +870,8 @@ class ScannerFrame(ctk.CTkFrame):
         config.reporte_static = os.path.join(self.fp, "Deep_Static_Analysis.txt")
         config.reporte_morph = os.path.join(self.fp, "Metamorphosis_Report.txt")
         config.reporte_cleaning = os.path.join(self.fp, "String_Cleaner_Detection.txt")
+        # [NUEVO] Fase 27: Master Anti-Forensics
+        config.reporte_antiforensics = os.path.join(self.fp, "Master_AntiForensics_Report.txt")
         
         # 2. Inicializar Dashboard HTML
         try: scanner_engine.generar_reporte_html(self.fp, self.config)
@@ -888,8 +895,6 @@ class ScannerFrame(ctk.CTkFrame):
             context = type('obj', (object,), {'file_snapshot': [], 'process_snapshot': []})
 
         # 5. Definir Fases
-        # (ID, Función, usa_contexto?)
-        # La tupla es (id, func, flag_context)
         fases_map = [
             ('f1', scanner_engine.fase_shimcache, False),
             ('f2', scanner_engine.fase_rastro_appcompat, False),
@@ -916,10 +921,11 @@ class ScannerFrame(ctk.CTkFrame):
             ('f23', scanner_engine.fase_rogue_drivers, False),
             ('f24', scanner_engine.fase_deep_static, False),
             ('f25', scanner_engine.fase_metamorphosis_hunter, True),
-            ('f26', scanner_engine.fase_string_cleaning, False)
+            ('f26', scanner_engine.fase_string_cleaning, False),
+            # [NUEVO] FASE 27: Master Anti-Forensics
+            ('f27', scanner_engine.fase_27_master_hunter, False),
+            ('f28', scanner_engine.fase_amcache_full, False)
         ]
-
-        total = len(fases_map)
 
         # 6. Ejecutar Bucle
         for i, (k, func, use_ctx) in enumerate(fases_map):
@@ -931,7 +937,13 @@ class ScannerFrame(ctk.CTkFrame):
                 try:
                     # Determinar modo para esta fase específica
                     modo_fase = conf_fase.get('modo', config.t("opt_list"))
-                    desc = k.upper() # O podrías mapear nombres
+                    
+                    # --- AQUÍ ESTÁ EL CAMBIO DE NOMBRE PARA LA GUI ---
+                    if k == 'f27':
+                        desc = "BYPASS DETECTER" # Nombre personalizado para la GUI
+                    else:
+                        desc = k.upper() # Nombre genérico para las demás
+                    
                     self.update_status(f"Running Module: {desc}...")
                     
                     # Construir argumentos
@@ -964,7 +976,7 @@ class ScannerFrame(ctk.CTkFrame):
 class ScannelerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("SCANNELER V.2026")
+        self.title("SCANNELER")
         
         w, h = 1100, 750
         ws = self.winfo_screenwidth()
