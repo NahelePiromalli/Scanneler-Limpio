@@ -9,6 +9,7 @@ import datetime
 import random
 import time
 from queue import Queue
+from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageTk
 
 # Importaciones locales
@@ -969,7 +970,7 @@ class ScannerFrame(ctk.CTkFrame):
             scanner_engine.cola_vt.join()
 
         if not config.CANCELAR_ESCANEO: 
-            try: scanner_engine.generar_reporte_global_cheats(self.fp)
+            try: scanner_engine.generar_reporte_html(self.fp, self.config, abrir_navegador=True)
             except: pass
             self.update_status("DONE")
 

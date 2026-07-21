@@ -28,12 +28,18 @@ if __name__ == "__main__":
             except: pass
             sys.exit()
 
-        # 2. Security Check (Anti-VM)
-        # if utils.check_security(): sys.exit() # Descomentar para producción
+        # 2. Security Check (Anti-Debugging & Anti-Tamper)
+        if utils.check_security():
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showwarning("Seguridad Activa", "Se ha detectado un entorno de depuración o máquina virtual. Scanneler no se ejecutará en este entorno.")
+            sys.exit()
         
-        # 3. Cargar YARA
+        # 3. Cargar YARA & Ring 0 Kernel Driver
         print("Cargando motor...")
         utils.inicializar_yara()
+        try: utils.ensure_kernel_driver_running()
+        except: pass
         
         # 4. Iniciar App
         app = ScannelerApp()
